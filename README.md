@@ -35,7 +35,7 @@ This integration is a Python app and uses:
 At the time of writing, 2024-03, only the [Wallbox Quasar 1 charger](https://wallbox.com/en_uk/quasar-dc-charger) is supported.
 This is a [CHAdeMO](https://www.chademo.com/) compatible charger.
 Compatible cars that can do V2G with this protocol are the [Nissan Leaf](https://ev-database.org/car/1657/Nissan-Leaf-eplus) (also earlier models) and [Nissan Evalia](https://ev-database.org/car/1117/Nissan-e-NV200-Evalia).
-When the Quasar 2 will be available in the EU we expect V2G Liberty to be compatible with this hardware right away.
+When the Wallbox Quasar 2 is available we expect V2G Liberty to be compatible with this hardware "out of the box".
 Then also CCS V2G capable cars can be managed with V2G Liberty.
 Hopefully other chargers will follow soon.
 
@@ -84,8 +84,9 @@ Home Assistant only reads the appointments from the online calendar.
 Options are, for example:
 - A CalDav compatible calendar. E.g. NextCloud or OwnCloud if you’d like an open-source solution
 - iCloud, this can be reached through CalDav (or through the HA integration – no examples yet)
-- Google calendar
-This from early 2024 can also be reached via CalDav but has not been tested yet with V2G Liberty (if you've got experience with this, please let us know!). See: https://developers.google.com/calendar/caldav/v2/guide. The Google calendar is confirmed to with the HA Google Calendar integration in Home Assistant (not to be confused with Google Assistant).
+- Google calendar<br>
+This from early 2024 can also be reached via CalDav but has not been tested yet with V2G Liberty (if you've got experience with this, please let us know!). See: https://developers.google.com/calendar/caldav/v2/guide.<br>
+The Google calendar is confirmed to work with the HA Google Calendar integration in Home Assistant (not to be confused with Google Assistant).
 
 - Office 365. Via non-official O365-HomeAssistant integration, see GitHub
 - ICS Calendar (or iCalendar) integration, also non-official. It can be found on HACS.
@@ -93,7 +94,7 @@ This from early 2024 can also be reached via CalDav but has not been tested yet 
 We recommend a separate calendar for your car reservations.
 Filtering only the car reservations is also an option.
 The result must be that in Home Assistant only the events meant for the car are present.
-Preferably name the calendar (`car_reservation`). If you name(d) it otherwise, update the calendar name in the configuration of V2G Liberty secrets.yaml.
+Preferably name the calendar (`car_reservation`). If you name(d) it otherwise, update the calendar name in the configuration of V2G Liberty secrets.yaml and in the v2g_liberty_dashboard.yaml
 
 ---
 
@@ -102,6 +103,22 @@ Preferably name the calendar (`car_reservation`). If you name(d) it otherwise, u
 Now that you have a running Home Assistant, you're ready to install V2G Liberty in Home Assistant.
 We'll take you through the process step by step.
 
+### Install the AppDaemon 4 add-on
+
+AppDaemon is an official add-on for HA and thus can be installed from within HA.
+
+Please go to `Settings -> Add-ons -> Add-on store` and find and install the AppDaemon add-on.
+
+***After the update > 0.14 the folder structure and location has changed., please take extra attention to setting folders and files in the right place.***
+
+When installed AppDaemon needs to be configured, look for (`Settings -> Addons -> AppDaemon 4 -> Configuration`), add the following Python packages and click `save`:
+
+```yaml
+python_packages:
+  - isodate
+  - pyModbus
+```
+
 ### Install HACS
 
 The Home Assistant Community Store (HACS) has loads of integrations that are not in the official store of HA.
@@ -109,7 +126,7 @@ You'll need two of these and that's why you also need to install this add-on.
 It is explained on the [HACS installation pages](https://hacs.xyz).
 As a reference you might find this [instruction video](https://www.youtube.com/watch?v=D6ZlhE-Iv9E) a handy resource.
 
-### Add modules to HA via HACS
+#### Add modules to HA via HACS
 
 Add the following modules to HA through HACS:
 - [ApexChart-card](https://github.com/RomRider/apexcharts-card)<br>
@@ -125,8 +142,67 @@ After installation the reference to these resources has to be added through menu
 4. Repeat for `/hacsfiles/lovelace-card-mod/card-mod.js`
 5. Restart Home Assistant.
 
+### Install Samba share Add-on (optional)
+
+This lets you handle files in HA from a remote computer. This makes copying and editing much easier, so it is highly reccomended to install and use this add-on. This is also an official add-on for HA and thus can be installed from within HA.
+
+Again go to `Settings -> Add-ons -> Add-on store` and find and install the Samba share add-on.
+
+When installed the add-on needs to be configured, look for (`Settings -> Addons -> Samba share -> Configuration`). Create a username and set a password (leave workgroup to WORKGROUP) and click `save`.
+
+In the documentation tab you'll find instructions on how to connect your computer to the Samba share. You'll have to connect to the `addon_configs` share and to the `config` share.
+
+If this does not work for you the files can also be copied and redited via the add-on "File editor". This is not explained in further detail here.
 
 ## Configure HA
+
+### Copy & edit files
+
+If you've not already done so, download the newest [V2G Liberty files](https://github.com/V2G-liberty/HA-manual-install/archive/refs/heads/main.zip) from GitHub to your computer and un-pack/un-zip. You'll have two folders that need to be copied to their respective locations.
+
+Copy these files (via Samba share) so that the following folders and files are created:
+
+```
+. (root = Addon config folder)
+a0d7b954_appdaemon
+├── appdaemon.yaml ①
+├── apps
+│   ├── apps.yaml ①
+│   └── v2g-liberty
+│       ├── constants.py
+│       ├── flexmeasures_client.py
+│       ├── get_fm_data.py
+│       ├── LICENSE
+│       ├── modbus_evse_client.py
+│       ├── README.md
+│       ├── set_fm_data.py
+│       ├── v2g_globals.py
+│       └── v2g_liberty.py
+│    
+└── logs ②
+    ├── appdaemon_error.log
+    └── appdaemon_main.log 
+```
+① If you had AppDaemon already configured and/or have other apps you'll have to add the contents of the downloaded files to your current files instead of overwriting them.
+
+② This folfer is not in the downloaded zip-file. Check if this folder exists, if not create it manually. The .log files in it will be automatically created by AppDaemon once it runs.
+
+
+```
+. (root = HA config folder)
+├── packages
+│   └── v2g_liberty
+│       ├── table_style.yaml
+│       ├── v2g-liberty-dashboard.yaml
+│       ├── v2g-liberty-package.yaml
+│       └── v2g_liberty_ui_module_stats.yaml
+├── configuration.yaml ③
+└── secrets.yaml ③
+```
+
+③ These files need to be edited by you, see next steps.
+
+### Create configuration
 
 This is not complicated, but you'll need to work precise. The configuration of HA is stored in .yaml files, these can be edited in the HA file editor (in the left main menu).
 
@@ -134,45 +210,11 @@ This is not complicated, but you'll need to work precise. The configuration of H
 
 After completion of this step you'll end up with a these files and folders (others might be there but are not shown here). Some might be already present and only need editing. Others files or folders might need to added. The files you'll have to edit are marked with *.
 
-```
-. (root = Addon config folder)
-a0d7b954_appdaemon
-├── apps
-│   ├── v2g-liberty
-│   │   ├── constants.py
-│   │   ├── flexmeasures_client.py
-│   │   ├── get_fm_data.py
-│   │   ├── LICENSE
-│   │   ├── modbus_evse_client.py
-│   │   ├── README.md
-│   │   ├── set_fm_data.py
-│   │   ├── v2g_globals.py
-│   │   └── v2g_liberty.py
-│   └ apps.yaml *
-├── logs (possibly this need to be created)
-│   ├── appdaemon_error.log
-│   └── appdaemon_main.log
-└ appdaemon.yaml *
-```
-```
-. (root = HA config folder)
-├── packages
-│   └── v2g-liberty
-│       ├── table_style.yaml
-│       ├── v2g-liberty-dashboard.yaml
-│       ├── v2g-liberty-package.yaml
-│       └── v2g_liberty_ui_module_stats.yaml
-├── configuration.yaml *
-└── secrets.yaml *
-```
-
 ### Secrets
 
-HA stores secrets in the file `secrets.yaml` and V2G Liberty expects this file to be in the default location, the config folder.
-We store both secrets and configuration values in this file as this is the most convenient way for storing these.
-Open this file in the HA file editor and add the following code. You'll need to replace secrets/values for your custom setting.
-If you have installed the Studio Code Server addon (not mandatory), you can use that.
+HA stores secrets in the file `secrets.yaml`. V2G Liberty stores both secrets and configuration values in this file. It can be found in the root of the `config` folder (share).
 
+Open this file with a text editor on your computer (or in the HA file editor if you like) and add the following code. You'll need to replace secrets/values for your custom setting.
 
 ```yaml
 ################################################################################
@@ -359,12 +401,12 @@ wallbox_max_discharging_power: XXXX
 
 # Configuration for the calendar for making reservations for the car #
 # This is mandatory
-# It can be a Google calendar (please use the Google calendar integration for HomeAssistant)
+# It can be any caldav calendar (NextCloud, OwnCloud, iCloud, Google, etc.) It is recommended to use caldav over the Google integration for ease of installation here.
 car_calendar_name: calendar.car_reservation
 # This normally matches the ha_time_zone setting.
 car_calendar_timezone: Europe/Amsterdam
 
-## Remove these if another calendar is used.
+## Remove these if a none-caldav calendar via a HA integration is used.
 ## Please also remove the calendar related entities in v2g_liberty_package.yaml
 caldavUN: "your caldav username here (use quotes)"
 caldavPWD: "your caldav password here (use quotes)"
@@ -372,180 +414,16 @@ caldavURL: "your caldav URL here (use quotes)"
 
 ```
 
-### Copy & edit files
-
-In your Home Assistant file editor, go to `/config/appdaemon/apps/` and create a new folder `v2g-liberty`.
-Within the v2g-liberty folder create a new folder `app-config`.
-From this GitHub project copy all files to the respective folders.
-
-## Install the AppDaemon 4 add-on
-
-AppDaemon is an official add-on for HA and thus can be installed from within HA.
-
-Please go to Settings -> Add-ons -> Add-on store and find and install the AppDaemon add-on.
-
-***After the update > 0.14 the folder structure and location has changed., please take extra attention to setting folders and files in the right place.***
-
-When installed AppDaemon needs to be configured, look for (`Settings -> Addons -> AppDaemon 4 -> Configuration`), add the following Python packages and click `save`:
-
-```yaml
-python_packages:
-  - isodate
-  - pyModbus
-```
-### AppDaemon configuration
-
-To configure AppDaemon you'll need to add the following to the appdaemon.yaml file.
-
-```yaml
----
-secrets: /homeassistant/secrets.yaml
-
-appdaemon:
-  latitude: !secret ha_latitude
-  longitude: !secret ha_longitude
-  elevation: !secret ha_elevation
-  time_zone: !secret ha_time_zone
-  production_mode: False
-  plugins:
-    HASS:
-      type: hass
-
-# Setting logging is optional but useful. The software is in use for quite some
-# time but not bullet-proof yet. So every now and then you'll need to see what
-# happend.
-# Make sure the "logs" folder is created.
-logs:
-  main_log:
-    filename: /config/logs/appdaemon_main.log
-  error_log:
-    filename: /config/logs/appdaemon_error.log
-
-http:
-  url: http://127.0.0.1:5050
-admin:
-api:
-hadashboard:
-```
-
-### Apps.yaml
-
-In the same directory, add (or extend) `apps.yaml` with the following.
-Usually there is no need to change any of the values as all personal settings are referenced from the secrets file.
-
-```yaml
----
-v2g-globals:
-  module: v2g_globals
-  class: V2GLibertyGlobals
-  # This needs to load before all other modules
-  priority: 10
-
-  charger_plus_car_roundtrip_efficiency: !secret charger_plus_car_roundtrip_efficiency
-  charger_max_charging_power: !secret wallbox_max_charging_power
-  charger_max_discharging_power: !secret wallbox_max_discharging_power
-
-  car_max_capacity_in_kwh: !secret car_max_capacity_in_kwh
-  car_min_soc_in_percent: !secret car_min_soc_in_percent
-  car_max_soc_in_percent: !secret car_max_soc_in_percent
-  allowed_duration_above_max_soc_in_hrs: !secret allowed_duration_above_max_soc_in_hrs
-
-  fm_account_power_sensor_id: !secret fm_account_power_sensor_id
-  fm_account_availability_sensor_id: !secret fm_account_availability_sensor_id
-  fm_account_soc_sensor_id: !secret fm_account_soc_sensor_id
-  fm_account_cost_sensor_id: !secret fm_account_cost_sensor_id
-
-  fm_optimisation_mode: !secret fm_optimisation_mode
-  electricity_provider: !secret electricity_provider
-
-  # If electricity_provider is set to "self-provided"
-  fm_own_price_production_sensor_id: !secret fm_own_price_production_sensor_id
-  fm_own_price_consumption_sensor_id: !secret fm_own_price_consumption_sensor_id
-  fm_own_emissions_sensor_id: !secret fm_own_emissions_sensor_id
-  fm_own_context_display_name: !secret fm_own_context_display_name
-
-modbus_evse_client:
-  module: modbus_evse_client
-  class: ModbusEVSEclient
-  priority: 20
-  dependencies:
-    - v2g-globals
-
-  wallbox_host: !secret wallbox_host
-  wallbox_port: !secret wallbox_port
-
-  car_average_wh_per_km: !secret car_average_wh_per_km
-
-v2g_liberty:
-  module: v2g_liberty
-  class: V2Gliberty
-  priority: 50
-  dependencies:
-    - v2g-globals
-    - flexmeasures-client
-    - modbus_evse_client
-
-  admin_mobile_name: !secret admin_mobile_name
-  admin_mobile_platform: !secret admin_mobile_platform
-
-  car_average_wh_per_km: !secret car_average_wh_per_km
-
-  car_reservation_calendar: !secret car_calendar_name
-  car_reservation_calendar_timezone: !secret car_calendar_timezone
-
-flexmeasures-client:
-  module: flexmeasures_client
-  class: FlexMeasuresClient
-  priority: 50
-  dependencies:
-    - v2g-globals
-
-  fm_user_email: !secret fm_user_email
-  fm_user_password: !secret fm_user_password
-  fm_schedule_duration: !secret fm_schedule_duration
-
-  max_number_of_reattempts_to_retrieve_schedule: 6
-  delay_for_reattempts_to_retrieve_schedule: 15
-  delay_for_initial_attempt_to_retrieve_schedule: 20
-
-get_fm_data:
-  module: get_fm_data
-  class: FlexMeasuresDataImporter
-  priority: 100
-  dependencies:
-    - v2g-globals
-    - flexmeasures-client
-  fm_data_user_email: !secret fm_user_email
-  fm_data_user_password: !secret fm_user_password
-  VAT: !secret VAT
-  markup_per_kwh: !secret markup_per_kwh
-
-set_fm_data:
-  module: set_fm_data
-  class: SetFMdata
-  priority: 100
-  dependencies:
-    - v2g-globals
-    - modbus_evse_client
-
-  fm_data_user_email: !secret fm_user_email
-  fm_data_user_password: !secret fm_user_password
-
-  fm_base_entity_address_power: !secret fm_base_entity_address_power
-  fm_base_entity_address_availability: !secret fm_base_entity_address_availability
-  fm_base_entity_address_soc: !secret fm_base_entity_address_soc
-
-```
 
 ## Configure HA to use v2g-liberty
 
 This (nearly last) step will combine the work you've done so far: it adds V2G Liberty to HA.
-In your Home Assistant file editor, go to `/config/configuration.yaml` and add the following to the top of the file:
+In your text editor add the following to the top of the `configuration.yaml` file:
 
 ```yaml
 homeassistant:
   packages:
-    v2g_pack: !include packages/v2g-liberty/v2g_liberty_package.yaml
+    v2g_pack: !include packages/v2g_liberty/v2g_liberty_package.yaml
 ```
 
 ### HA Settings
@@ -561,13 +439,13 @@ This lets all persons in the household operate the charger and they all get noti
 
 This is optional but highly recommended.
 You can get it from the official app store of your phone platform.
-If you’ve logged in, the mobile can later be used to receive notifications.
+If you’ve added your HA instance and logged in you can manage the charging via the app and, very conveniantly, receive notifications about the charging on you mobile.
 
 #### Make V2G Liberty your default dashboard
 
 After the restart (next step) you'll find the V2G Liberty dashboard in the sidebar. 
 Probably underneath "Overview", which then likely is the current default dashboard. To make the V2G Liberty dashboard 
-your default go to `Settings > Dashboards`. Select the V2G Liberty dashboard row and click th link "SET AS DEFAULT IN THIS DEVICE".
+your default go to `Settings > Dashboards`. Select the V2G Liberty dashboard row and click the link "SET AS DEFAULT IN THIS DEVICE".
 
 
 
@@ -577,10 +455,17 @@ HA can be restarted by `Settings > System > Restart (top right)`.
 AppDaemon can be (re-)started via `Settings > Add-ons > AppDaemon > (Re-)start`.
 
 Now the system needs 5 to 10 minutes before it runs nicely. If a car is connected you should see a schedule comming in soon after.
+
+### Happy 🚘←⚡→🏡 charging!
+
 <!-- <style 
   type="text/css">
   body {
     max-width: 50em;
     margin: 4em;
+  }
+  pre {
+     max-height: 25em;
+     overflow: auto;
   }
 </style> -->
