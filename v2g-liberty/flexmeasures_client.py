@@ -164,16 +164,16 @@ class FlexMeasuresClient(hass.Hass):
             self.log(message)
 
     def get_new_schedule(self, target_soc_kwh: float, target_datetime: datetime, current_soc_kwh: float, back_to_max_soc: datetime):
-        """Get a new schedule from FlexMeasures.
-           But not if still busy with getting previous schedule.
-        Trigger a new schedule to be computed and set a timer to retrieve it, by its schedule id.
-        Params:
-        target_soc_kwh: if no calendar item is present use a SoC that represents 100%
-        target_date_time: if no calendar item is present use target in weeks time. It must be snapped to sensor resolution.
-        current_soc_kwh: a soc that is as close as possible to the actual state of charge
-        back_to_max_soc: if current SoC > Max_SoC this setting informs the schedule when to be back at max soc. Can be None
+        """ Get a new schedule from FlexMeasures.
+            But not if still busy with getting previous schedule.
+            Trigger a new schedule to be computed and set a timer to retrieve it, by its schedule id.
+
+            Args:
+                target_soc_kwh (float): if no calendar item is present use a SoC that represents 100%
+                target_datetime (datetime): if no calendar item is present use target in weeks time. It must be snapped to sensor resolution.
+                current_soc_kwh (float): a soc that is as close as possible to the actual state of charge
+                back_to_max_soc (datetime): if current SoC > Max_SoC this setting informs the schedule when to be back at max soc. Can be None
         """
-        # self.log(f"get_new_schedule called with car_soc: {current_soc_kwh}kWh ({type(current_soc_kwh)}, back_to_max:  {back_to_max_soc} ({type(back_to_max_soc)}.")
 
         now = datetime.now(tz=self.TZ)
         self.log(f"get_new_schedule: nu = {now.isoformat()}, ({type(now)}).")
