@@ -171,8 +171,8 @@ class ModbusEVSEclient(hass.Hass):
         port = self.args["wallbox_port"]
         self.log(f"Configuring Modbus EVSE client at {host}:{port}")
         self.client = modbusClient.AsyncModbusTcpClient(
-            host = "192.168.188.110",
-            port=502,
+            host=host,
+            port=port,
             timeout=5,
             retries=6,
             reconnect_delay=1,
