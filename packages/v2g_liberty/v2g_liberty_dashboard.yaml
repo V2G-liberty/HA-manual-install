@@ -416,7 +416,7 @@ views:
                 <ha-alert alert-type="warning" title="No car is connected">To start Max-charge-now, please connect the car to the charger.</ha-alert>
           - type: calendar
             entities:
-              - calendar.test_car_reservation
+              - calendar.car_reservation
             initial_view: listWeek
             title: Car reservations
             card_mod:
