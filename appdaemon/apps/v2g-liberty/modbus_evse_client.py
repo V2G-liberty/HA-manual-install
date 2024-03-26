@@ -239,8 +239,8 @@ class ModbusEVSEclient(hass.Hass):
         self.v2g_main_app = await self.get_app("v2g_liberty")
         self.v2g_globals = await self.get_app("v2g-globals")
 
-        host = self.args["wallbox_host"]
-        port = self.args["wallbox_port"]
+        host = self.args["evse_host"]
+        port = self.args["evse_port"]
         self.log(f"Configuring Modbus EVSE client at {host}:{port}")
         self.client = modbusClient.AsyncModbusTcpClient(
             host=host,
@@ -469,7 +469,6 @@ class ModbusEVSEclient(hass.Hass):
         # **** Handle disconnect:
         # Goes to this status when the plug is removed from the socket (not when disconnect is requested from the UI)
         if new_charger_state == self.DISCONNECTED_STATE:
-            #self.log(f"Connection state has changed, so check new polling strategy charger_state change new_state: {new_charger_state}, old_state: {old_state}")
             # The connected state has changed to disconnected.
             await self.__set_charger_action("stop", reason="__handle_charge_state_change: disconnected")
             await self.__set_poll_strategy()
