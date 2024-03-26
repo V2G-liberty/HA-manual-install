@@ -18,7 +18,7 @@ class V2Gliberty(hass.Hass):
     + The fm_client, that communicates with the FlexMeasures platform (which delivers the charging schedules).
     + Retrieves the calendar items
 
-    This class is the primairy resonsible module for providing information to the UI. The EVSE client 
+    This class is the primarily responsible module for providing information to the UI. The EVSE client 
     does keep EVSE data up to date for presentation in the UI.
     """
 
@@ -35,12 +35,12 @@ class V2Gliberty(hass.Hass):
 
     # Utility variables for preventing a frozen app. Call set_next_action at least every x seconds
     timer_handle_set_next_action: object
-    call_next_action_atleast_every: int
+    call_next_action_at_least_every: int
     scheduling_timer_handles: List[AsyncGenerator]
 
     # A SoC of 0 means: unknown/car not connected.
     # Keep local variables so it is not needed to get it every time from evse client
-    # or HA entity. They are updated via "process_soc", which is triggerd via event listener.
+    # or HA entity. They are updated via "process_soc", which is triggered via event listener.
     connected_car_soc: int
     connected_car_soc_kwh: float
 
@@ -94,7 +94,7 @@ class V2Gliberty(hass.Hass):
         self.__init_notification_configuration()
 
         self.in_boost_to_reach_min_soc = False
-        self.call_next_action_atleast_every = 15 * 60
+        self.call_next_action_at_least_every = 15 * 60
         self.timer_handle_set_next_action = ""
         self.connected_car_soc = 0
         self.connected_car_soc_kwh = 0
@@ -177,16 +177,20 @@ class V2Gliberty(hass.Hass):
         """
         # Assume the charger has crashed.
         self.log(f"The charger probably crashed, notifying user")
-        title = "Critical error"
+        title = "Modbus communication error"
         message = "Automatic charging has been stopped. Please click this notification to open the V2G Liberty App and follow the steps to solve this problem."
         self.__notify_user(
             message     = message,
             title       = title,
             tag         = "critical_error",
-            critical    = True,
+            critical    = False,
             send_to_all = False
         )
-
+        # TODO: 
+        # Just changed the critical to False as i expect this to occur less frequent.
+        # It seems self-fixing now. This should be handled so that the notification is
+        # removed and functions are restored if communication is restored.
+         
         await self.set_state("input_boolean.charger_modbus_communication_fault", state="on")
         self.__set_chargemode_in_ui("Stop")
         return
@@ -337,7 +341,7 @@ class V2Gliberty(hass.Hass):
             if charge_mode == "Max boost now":
                 self.__set_chargemode_in_ui("Automatic")
                 self.__notify_user(
-                    message     = "Chargemode set from 'Max charge now' to 'Automatic' as car is disconnected.",
+                    message     = "Charge mode set from 'Max charge now' to 'Automatic' as car is disconnected.",
                     title       = None,
                     tag         = "charge_mode_change",
                     critical    = False,
@@ -351,7 +355,7 @@ class V2Gliberty(hass.Hass):
             await self.__set_next_action(v2g_args="handle_charger_state_change")
             return
 
-        # Handling erros is left to the evsev_client as this knows what specific situations there are for 
+        # Handling errors is left to the evse_client as this knows what specific situations there are for 
         # the charger. If the charger needs a restart the evse_client calls notify_user_of_charger_needs_restart 
         return
 
@@ -683,7 +687,7 @@ class V2Gliberty(hass.Hass):
         If appropriate, also starts a charge directly.
         Finally, the expected SoC (given the schedule) is calculated and saved to input_text.soc_prognosis.
         """
-        self.log("__process_schedule called, triggerd by change in input_text.chargeschedule.")
+        self.log("__process_schedule called, triggered by change in input_text.chargeschedule.")
 
         if not await self.evse_client.is_car_connected():
             self.log("Stopped processing schedule; car is not connected")
@@ -843,7 +847,7 @@ class V2Gliberty(hass.Hass):
         """The function determines what action should be taken next based on current SoC, Charge_mode, Charger_state
 
         This function is meant to be called upon:
-        - Inititialization
+        - Initialisation
         - SoC updates
         - Charger state updates
         - Charge mode updates
@@ -862,11 +866,15 @@ class V2Gliberty(hass.Hass):
 
         self.timer_handle_set_next_action = await self.run_in(
             self.__set_next_action,
-            self.call_next_action_atleast_every,
+            self.call_next_action_at_least_every,
         )
 
         if not await self.evse_client.is_car_connected():
             self.log("No car connected or error, stopped setting next action.")
+            return
+
+        if self.evse_client.try_get_new_soc_in_process:
+            self.log("__set_next_action: evse_client.try_get_new_soc_in_process, stopped setting next action.")
             return
         
         if self.connected_car_soc == 0:
@@ -888,7 +896,7 @@ class V2Gliberty(hass.Hass):
         self.log(f"Setting next action based on charge_mode '{charge_mode}'.")
 
         if charge_mode == "Automatic":
-            # This should be handeld by update_charge_mode
+            # This should be handled by update_charge_mode
             # self.set_charger_control("take")
             
             if self.connected_car_soc < c.CAR_MIN_SOC_IN_PERCENT and not self.in_boost_to_reach_min_soc:
