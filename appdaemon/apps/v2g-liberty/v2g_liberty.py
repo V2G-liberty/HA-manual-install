@@ -151,7 +151,7 @@ class V2Gliberty(hass.Hass):
     #                         PUBLIC FUNCTIONS                           #
     ######################################################################
 
-    def handle_no_new_schedule(self, error_name: str, error_state: bool):
+    async def handle_no_new_schedule(self, error_name: str, error_state: bool):
         """ Keep track of situations where no new schedules are available:
             - invalid schedule
             - timeouts on schedule
@@ -167,7 +167,7 @@ class V2Gliberty(hass.Hass):
             self.log(f"handle_no_valid_schedule called unknown error_name: '{error_name}'.")
             return
         self.no_schedule_errors[error_name] = error_state
-        self.__notify_no_new_schedule()
+        await self.__notify_no_new_schedule()
 
 
     async def notify_user_of_charger_needs_restart(self):
@@ -293,7 +293,7 @@ class V2Gliberty(hass.Hass):
         Reacts to button in UI that fires DISCONNECT_CHARGER event.
         """
         self.log("************* Disconnect charger requested *************")
-        self.__reset_no_new_schedule()
+        await self.__reset_no_new_schedule()
         await self.evse_client.stop_charging()
         # Control is not given to user, this is only relevant if charge_mode is "Off" (stop).
         self.__notify_user(
@@ -452,7 +452,7 @@ class V2Gliberty(hass.Hass):
     #                PRIVATE FUNCTIONS FOR NO-NEW-SCHEDULE               #
     ######################################################################
 
-    def __reset_no_new_schedule(self):
+    async def __reset_no_new_schedule(self):
         """ Sets all errors to False and removes notification / UI messages
 
         To be used when the car gets disconnected, so that while it stays in this state there is no
@@ -463,10 +463,22 @@ class V2Gliberty(hass.Hass):
 
         for error_name in self.no_schedule_errors:
             self.no_schedule_errors[error_name] = False
-        self.__notify_no_new_schedule(reset = True)
+        await self.__notify_no_new_schedule(reset = True)
 
 
-    def __notify_no_new_schedule(self, reset: Optional[bool] = False):
+    async def __cancel_timer(self, timer):
+        """Utility function to silently cancel timers.
+        Born because the "silent" flag in cancel_timer does not work and the 
+        logs get flooded with un_useful warnings.
+
+        Args:
+            timers (list): list of timer_handles to cancel
+        """
+        if self.info_timer(timer):
+            silent = True #Does not really work
+            await self.cancel_timer(timer, silent)
+
+    async def __notify_no_new_schedule(self, reset: Optional[bool] = False):
         """ Check if notification of user about no new schedule available is needed,
             based on self.no_schedule_errors. The administration for the errors is done by
             handle_no_new_schedule().
@@ -490,7 +502,9 @@ class V2Gliberty(hass.Hass):
         """
 
         if reset:
-            self.cancel_timer(self.notification_timer_handle, True)
+            if self.info_timer(self.notification_timer_handle):
+                res = await self.cancel_timer(self.notification_timer_handle)
+                self.log(f"__notify_no_new_schedule, notification timer cancelled: {res}.")
             self.no_schedule_notification_is_planned = False
             self.__clear_notification_for_all_recipients(tag = "no_new_schedule")
             self.set_state("input_boolean.error_no_new_schedule_available", state="off")
@@ -510,7 +524,8 @@ class V2Gliberty(hass.Hass):
                 self.no_schedule_notification_is_planned = True
         else:
             self.set_state("input_boolean.error_no_new_schedule_available", state="off")
-            canceled_before_run = self.cancel_timer(self.notification_timer_handle)
+            canceled_before_run = await self.cancel_timer(self.notification_timer_handle, True)
+            self.log(f"__notify_no_new_schedule, notification timer cancelled before run: {canceled_before_run}.")
             if self.no_schedule_notification_is_planned and not canceled_before_run:
                 # Only send this message if "no_schedule_notification" was actually sent
                 title = "Schedules available again"
@@ -634,7 +649,7 @@ class V2Gliberty(hass.Hass):
                  f"target_datetime: {target_datetime}kWh ({type(target_datetime)}, "
                  f"target_soc_kwh: {target_soc_kwh}kWh ({type(target_soc_kwh)}, "
                  f"back_to_max:  {self.back_to_max_soc} ({type(self.back_to_max_soc)}.")
-        self.fm_client.get_new_schedule(
+        await self.fm_client.get_new_schedule(
             target_soc_kwh = target_soc_kwh,
             target_datetime = target_datetime,
             current_soc_kwh = self.connected_car_soc_kwh,
@@ -647,7 +662,7 @@ class V2Gliberty(hass.Hass):
     async def __cancel_charging_timers(self):
         # self.log(f"cancel_charging_timers - scheduling_timer_handles length: {len(self.scheduling_timer_handles)}.")
         for h in self.scheduling_timer_handles:
-            await self.cancel_timer(h, True)
+            await self.__cancel_timer(h)
         self.scheduling_timer_handles = []
         # Also remove any visible schedule from the graph in the UI..
         await self.__set_soc_prognosis_in_ui(None)
@@ -685,7 +700,7 @@ class V2Gliberty(hass.Hass):
         if resolution < self.MIN_RESOLUTION:
             self.log(f"Stopped processing schedule; the resolution ({resolution}) is below "
                      f"the set minimum ({self.MIN_RESOLUTION}).")
-            self.handle_no_new_schedule("invalid_schedule", True)
+            await self.handle_no_new_schedule("invalid_schedule", True)
             return
 
         # Detect invalid schedules
@@ -693,11 +708,11 @@ class V2Gliberty(hass.Hass):
         is_fallback = (schedule["scheduler_info"]["scheduler"] == "StorageFallbackScheduler")
         if is_fallback and (all(val == values[0] for val in values)):
             self.log(f"Invalid fallback schedule, all values are the same: {values[0]}. Stopped processing.")
-            self.handle_no_new_schedule("invalid_schedule", True)
+            await self.handle_no_new_schedule("invalid_schedule", True)
             # Skip processing this schedule to keep the previous
             return
         else:
-            self.handle_no_new_schedule("invalid_schedule", False)
+            await self.handle_no_new_schedule("invalid_schedule", False)
 
 
         # Create new scheduling timers, to send a control signal for each value
@@ -843,7 +858,7 @@ class V2Gliberty(hass.Hass):
 
         # Make sure this function gets called every x minutes to prevent a "frozen" app.
         if self.timer_handle_set_next_action:
-            self.cancel_timer(self.timer_handle_set_next_action, True)
+            await self.__cancel_timer(self.timer_handle_set_next_action)
 
         self.timer_handle_set_next_action = await self.run_in(
             self.__set_next_action,

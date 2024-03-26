@@ -95,7 +95,7 @@ class FlexMeasuresClient(hass.Hass):
 
         self.log("Completed initializing FlexMeasuresClient")
 
-    def ping_server(self, *args):
+    async def ping_server(self, *args):
         """ Ping function to check if server is alive """
         url = c.FM_PING_URL
 
@@ -105,7 +105,7 @@ class FlexMeasuresClient(hass.Hass):
                 # There was an error before as the counter > 0
                 # So a timer must be running, but it is not needed anymore, so cancel it.
                 self.cancel_timer(self.handle_for_repeater)
-                self.v2g_main_app.handle_no_new_schedule("no_communication_with_fm", False)
+                await self.v2g_main_app.handle_no_new_schedule("no_communication_with_fm", False)
             self.connection_error_counter = 0
         else:
             self.connection_error_counter += 1
@@ -114,7 +114,7 @@ class FlexMeasuresClient(hass.Hass):
             # A first error occurred, retry in every minute now
             self.handle_for_repeater = self.run_every(self.ping_server, "now+60", 60)
             self.log("No communication with FM! Increase tracking frequency.")
-            self.v2g_main_app.handle_no_new_schedule("no_communication_with_fm", True)
+            await self.v2g_main_app.handle_no_new_schedule("no_communication_with_fm", True)
 
     def authenticate_with_fm(self):
         """Authenticate with the FlexMeasures server and store the returned auth token.
@@ -163,17 +163,17 @@ class FlexMeasuresClient(hass.Hass):
                     message += f" Link for further info: {content}"
             self.log(message)
 
-    def get_new_schedule(self, target_soc_kwh: float, target_datetime: datetime, current_soc_kwh: float, back_to_max_soc: datetime):
-        """ Get a new schedule from FlexMeasures.
-            But not if still busy with getting previous schedule.
-            Trigger a new schedule to be computed and set a timer to retrieve it, by its schedule id.
-
-            Args:
-                target_soc_kwh (float): if no calendar item is present use a SoC that represents 100%
-                target_datetime (datetime): if no calendar item is present use target in weeks time. It must be snapped to sensor resolution.
-                current_soc_kwh (float): a soc that is as close as possible to the actual state of charge
-                back_to_max_soc (datetime): if current SoC > Max_SoC this setting informs the schedule when to be back at max soc. Can be None
+    async def get_new_schedule(self, target_soc_kwh: float, target_datetime: datetime, current_soc_kwh: float, back_to_max_soc: datetime):
+        """Get a new schedule from FlexMeasures.
+           But not if still busy with getting previous schedule.
+        Trigger a new schedule to be computed and set a timer to retrieve it, by its schedule id.
+        Params:
+        target_soc_kwh: if no calendar item is present use a SoC that represents 100%
+        target_date_time: if no calendar item is present use target in weeks time. It must be snapped to sensor resolution.
+        current_soc_kwh: a soc that is as close as possible to the actual state of charge
+        back_to_max_soc: if current SoC > Max_SoC this setting informs the schedule when to be back at max soc. Can be None
         """
+        # self.log(f"get_new_schedule called with car_soc: {current_soc_kwh}kWh ({type(current_soc_kwh)}, back_to_max:  {back_to_max_soc} ({type(back_to_max_soc)}.")
 
         now = datetime.now(tz=self.TZ)
         self.log(f"get_new_schedule: nu = {now.isoformat()}, ({type(now)}).")
@@ -194,7 +194,7 @@ class FlexMeasuresClient(hass.Hass):
         self.fm_busy_getting_schedule = True
 
         # Ask to compute a new schedule by posting flex constraints while triggering the scheduler
-        schedule_id = self.trigger_schedule(
+        schedule_id = await self.trigger_schedule(
             target_soc_kwh=target_soc_kwh,
             target_datetime=target_datetime,
             current_soc_kwh=current_soc_kwh,
@@ -210,7 +210,7 @@ class FlexMeasuresClient(hass.Hass):
         self.log(f"Attempting to get schedule (id={schedule_id}) in {self.DELAY_FOR_INITIAL_ATTEMPT} seconds")
         self.run_in(self.get_schedule, delay=self.DELAY_FOR_INITIAL_ATTEMPT, schedule_id=schedule_id)
 
-    def get_schedule(self, kwargs, **fnc_kwargs):
+    async def get_schedule(self, kwargs, **fnc_kwargs):
         """GET a schedule message that has been requested by trigger_schedule.
            The ID for this is schedule_id.
            Then store the retrieved schedule.
@@ -253,16 +253,17 @@ class FlexMeasuresClient(hass.Hass):
             else:
                 self.log("Schedule cannot be retrieved. Any previous charging schedule will keep being followed.")
                 self.fm_busy_getting_schedule = False
-                self.v2g_main_app.handle_no_new_schedule("timeouts_on_schedule", True)
+                await self.v2g_main_app.handle_no_new_schedule("timeouts_on_schedule", True)
 
             return
 
         self.log(f"GET schedule success: retrieved {res.status_code}")
         self.fm_busy_getting_schedule = False
-        self.v2g_main_app.handle_no_new_schedule("timeouts_on_schedule", False)
+        await self.v2g_main_app.handle_no_new_schedule("timeouts_on_schedule", False)
 
         self.fm_date_time_last_schedule = datetime.now(tz=self.TZ)
-        self.log(f"get_schedule: self.fm_date_time_last_schedule set to now, {self.fm_date_time_last_schedule.isoformat()}, ({type(self.fm_date_time_last_schedule)}).")
+        self.log(f"get_schedule: self.fm_date_time_last_schedule set to now,"
+                 f" {self.fm_date_time_last_schedule.isoformat()}, ({type(self.fm_date_time_last_schedule)}).")
 
         schedule = res.json()
         self.log(f"Schedule {schedule}")
@@ -271,7 +272,7 @@ class FlexMeasuresClient(hass.Hass):
                        state="ChargeScheduleAvailable" + self.fm_date_time_last_schedule.isoformat(),
                        attributes=schedule)
 
-    def trigger_schedule(self, *args, **fnc_kwargs) -> str:
+    async def trigger_schedule(self, *args, **fnc_kwargs) -> str:
         """Request a new schedule to be generated by calling the schedule triggering endpoint, while
         POSTing flex constraints.
         Return the schedule id for later retrieval of the asynchronously computed schedule.
@@ -426,7 +427,7 @@ class FlexMeasuresClient(hass.Hass):
 
         if res.status_code == 401:
             self.log_failed_response(res, url)
-            self.try_solve_authentication_error(res, url, self.trigger_schedule, *args, **fnc_kwargs)
+            await self.try_solve_authentication_error(res, url, self.trigger_schedule, *args, **fnc_kwargs)
             return None
 
         schedule_id = None
@@ -435,17 +436,17 @@ class FlexMeasuresClient(hass.Hass):
 
         if schedule_id is None:
             self.log_failed_response(res, url)
-            self.v2g_main_app.handle_no_new_schedule("timeouts_on_schedule", True)
+            await self.v2g_main_app.handle_no_new_schedule("timeouts_on_schedule", True)
             return None
 
         self.log(f"Successfully triggered schedule. Schedule id: {schedule_id}")
-        self.v2g_main_app.handle_no_new_schedule("timeouts_on_schedule", False)
+        await self.v2g_main_app.handle_no_new_schedule("timeouts_on_schedule", False)
         return schedule_id
 
-    def try_solve_authentication_error(self, res, url, fnc, *fnc_args, **fnc_kwargs):
+    async def try_solve_authentication_error(self, res, url, fnc, *fnc_args, **fnc_kwargs):
         if fnc_kwargs.get("retry_auth_once", True) and res.status_code == 401:
             self.log(f"Call to {url} failed on authorization (possibly the token expired); attempting to "
                      f"reauthenticate once.")
             self.authenticate_with_fm()
             fnc_kwargs["retry_auth_once"] = False
-            fnc(*fnc_args, **fnc_kwargs)
+            await fnc(*fnc_args, **fnc_kwargs)
