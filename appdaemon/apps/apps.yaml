@@ -28,6 +28,7 @@ v2g-globals:
   fm_own_emissions_sensor_id: !secret fm_own_emissions_sensor_id
   fm_own_context_display_name: !secret fm_own_context_display_name
 
+
 modbus_evse_client:
   module: modbus_evse_client
   class: ModbusEVSEclient
