@@ -35,8 +35,8 @@ modbus_evse_client:
   dependencies:
     - v2g-globals
 
-  wallbox_host: !secret wallbox_host
-  wallbox_port: !secret wallbox_port
+  evse_host: !secret evse_host
+  evse_port: !secret evse_port
 
   car_average_wh_per_km: !secret car_average_wh_per_km
 
@@ -98,3 +98,24 @@ set_fm_data:
   fm_base_entity_address_power: !secret fm_base_entity_address_power
   fm_base_entity_address_availability: !secret fm_base_entity_address_availability
   fm_base_entity_address_soc: !secret fm_base_entity_address_soc
+
+
+manage_own_price_data:
+  module: manage_own_price_data
+  class: ManageOwnPriceData
+  priority: 100
+  dependencies:
+    - v2g-globals
+    - set_fm_data
+    - v2g_liberty
+
+  fm_base_entity_address: !secret fm_base_entity_address
+
+  ha_sensor_id_own_consumption_price_forecast: !secret ha_sensor_id_own_consumption_price_forecast
+  ha_sensor_id_own_production_price_forecast: !secret ha_sensor_id_own_production_price_forecast
+  collection_name: !secret collection_name
+  price_label: !secret price_label
+  emission_label: !secret emission_label
+  uom_label: !secret uom_label
+  start_label: !secret start_label
+  end_label: !secret end_label
