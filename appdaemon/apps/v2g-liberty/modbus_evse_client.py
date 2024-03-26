@@ -5,6 +5,7 @@ import time
 import constants as c
 import pymodbus.client as modbusClient
 from pymodbus import ModbusException
+from pymodbus.exceptions import ConnectionException
 
 import appdaemon.plugins.hass.hassapi as hass
 
@@ -25,45 +26,99 @@ class ModbusEVSEclient(hass.Hass):
     MAX_USI = 65536
     HALF_MAX_USI = MAX_USI/2
 
-    ######   Modbus registers  ########
-    # Charger can be controlled by the app = user or by code = remote (Read/Write)
-    # For all other settings mentioned here to work, this setting must be remote.
-    CHARGER_POLLING_REGISTERS = {
-        526: 'charger_real_charging_power',
-        537: 'charger_charger_state',
-        538: 'charger_connected_car_state_of_charge',
-        539: 'unrecoverable_errors_register_high',
-        540: 'unrecoverable_errors_register_low',
-        541: 'recoverable_errors_register_high',
-        542: 'recoverable_errors_register_low'
+    ######################################################################
+    # Entities reading+validating modbus value and writing to HA entity  #
+    ######################################################################
+    CHARGER_POLLING_ENTITIES:list
+
+    ENTITY_CHARGER_CURRENT_POWER = {
+        'modbus_address' : 526,
+        'minimum_value': -7400,
+        'maximum_value': 7400,
+        'ha_entity_name': 'charger_real_charging_power'
+    }
+    ENTITY_CHARGER_STATE = {
+        'modbus_address' : 537,
+        'minimum_value': 0,
+        'maximum_value': 11,
+        'ha_entity_name': 'charger_charger_state'
+    }
+    ENTITY_CAR_SOC = {
+        'modbus_address' : 538,
+        'minimum_value': 2,
+        'maximum_value': 100,
+        'ha_entity_name': 'charger_connected_car_state_of_charge'
+    } #0% is very unlikely, 1% is sometimes returned while the true value is (much) higher
+    ENTITY_ERROR_1 = {
+        'modbus_address' : 539,
+        'minimum_value': 0,
+        'maximum_value': 65535,
+        'ha_entity_name': 'unrecoverable_errors_register_high'
+    }
+    ENTITY_ERROR_1 = {
+        'modbus_address' : 539,
+        'minimum_value': 0,
+        'maximum_value': 65535,
+        'ha_entity_name': 'unrecoverable_errors_register_high'
+    }
+    ENTITY_ERROR_2 = {
+        'modbus_address' : 540,
+        'minimum_value': 0,
+        'maximum_value': 65535,
+        'ha_entity_name': 'unrecoverable_errors_register_low'
+    }
+    ENTITY_ERROR_3 = {
+        'modbus_address' : 541,
+        'minimum_value': 0,
+        'maximum_value': 65535,
+        'ha_entity_name': 'recoverable_errors_register_high'
+    }
+    ENTITY_ERROR_4 = {
+        'modbus_address' : 542,
+        'minimum_value': 0,
+        'maximum_value': 65535,
+        'ha_entity_name': 'recoverable_errors_register_low'
     }
 
-    # This needs to be in a different dict because the addresses 261-525 do not exist in the EVSE
-    CHARGER_LOCKED_REGISTER = {
-        256: 'charger_locked'
-    }
-
-    CHARGER_ACTUAL_POWER_REGISTER = {
-        526: 'charger_real_charging_power'
-    }
-
-    CHARGER_SET_CHARGE_POWER_REGISTER: int = 260
-
-    CHARGER_STATE_REGISTER = {
-        537: 'charger_charger_state'
-    }
-
-    CAR_SOC_REGISTER = {
-        538: 'charger_connected_car_state_of_charge'
+    ENTITY_CHARGER_LOCKED = {
+        'modbus_address' : 256,
+        'minimum_value': 0,
+        'maximum_value': 1,
+        'ha_entity_name': 'charger_locked'
     }
 
     # To be read once at init
-    CHARGER_INFO_REGISTERS = {
-        1: "firmware_version",
-        2: "serial_number_high",
-        3: "serial_number_low"
+    CHARGER_INFO_ENTITIES: list
+
+    ENTITY_FIRMWARE_VERSION = {
+        'modbus_address' : 1,
+        'minimum_value': 0,
+        'maximum_value': 65535,
+        'ha_entity_name': 'firmware_version'
     }
 
+    ENTITY_SERIAL_NUMBER_HIGH = {
+        'modbus_address' : 2,
+        'minimum_value': 0,
+        'maximum_value': 65535,
+        'ha_entity_name': 'serial_number_high'
+    }
+
+    ENTITY_SERIAL_NUMBER_LOW = {
+        'modbus_address' : 3,
+        'minimum_value': 0,
+        'maximum_value': 65535,
+        'ha_entity_name': 'serial_number_low'
+    }
+
+
+
+    ######################################################################
+    #                 Modbus addresses for setting values                #
+    ######################################################################
+
+    # Charger can be controlled by the app = user or by code = remote (Read/Write)
+    # For all other settings mentioned here to work, this setting must be remote.
     SET_CHARGER_CONTROL_REGISTER:int = 81
     CONTROL_TYPES = {
         'user': 0,
@@ -88,7 +143,7 @@ class ModbusEVSEclient(hass.Hass):
     }
 
     # Charger setting to go to idle state if not receive modbus message within this timeout.
-    # Failsafe in case this software crashes: if timeout passes charger will stop (dis-)charging.
+    # Fail-safe in case this software crashes: if timeout passes charger will stop (dis-)charging.
     CHARGER_MODBUS_IDLE_TIMEOUT_REGISTER: int = 88
     CMIT: int = 1800 # Timeout in seconds. Half an hour is long, polling communicates every 5 or 15 seconds.
 
@@ -100,13 +155,15 @@ class ModbusEVSEclient(hass.Hass):
         'stop_charging': 2
     }
 
-    # AC Max Charging Power (by phase) (Read/Write)
+    # For setting the desired charge power, reading the actual charging power is done
+    # through ENTITY_CHARGER_CURRENT_POWER
+    CHARGER_SET_CHARGE_POWER_REGISTER: int = 260
+
+    # AC Max Charging Power (by phase) (hardware) setting in charger (Read/Write)
     # (int16) unit W, min -7400, max 7400
     # Used when set_setpoint_type = power
     MAX_CHARGE_POWER_REGISTER:int = 514
 
-    # Charger status (Readonly)
-    GET_STATUS:int = 537
     # 0: Goes to this status when the charge plug is disconnected from the car
     # 1: Connected and charging; goes to this status when action = start
     # 2: Connected and waiting for car demand; sometimes shortly goes to this status when action = start
@@ -120,13 +177,13 @@ class ModbusEVSEclient(hass.Hass):
         0: 'No car connected',
         1: 'Charging',
         2: 'Connected: waiting for car demand',
-        3: 'Connected: controlled by Wallbox App',
+        3: 'Connected: controlled by EVSE App',
         4: 'Connected: not charging (paused)',
         5: 'Connected: end of schedule',
         6: 'No car connected and charger locked',
         7: 'Error',
         8: 'Connected: In queue by Power Sharing',
-        9: 'Error: Unconfigured Power Sharing System',
+        9: 'Error: Un-configured Power Sharing System',
         10: 'Connected: In queue by Power Boost (Home uses all available power)',
         11: 'Discharging'
     }
@@ -146,7 +203,7 @@ class ModbusEVSEclient(hass.Hass):
     v2g_main_app: object
     v2g_globals: object
 
-    # Handle for polling_timer, needed for canceling polling.
+    # Handle for polling_timer, needed for cancelling polling.
     poll_timer_handle: object
     BASE_POLLING_INTERVAL_SECONDS: int = 5
     MINIMAL_POLLING_INTERVAL_SECONDS:int = 15
@@ -155,13 +212,28 @@ class ModbusEVSEclient(hass.Hass):
 
     try_get_new_soc_in_process: bool = False
 
-    # How old may data retrieved from HA enities be before it is renewed from the EVSE
+    # How old may data retrieved from HA entities be before it is renewed from the EVSE
     STATE_MAX_AGE_IN_SECONDS:int = 15
-
 
 
     async def initialize(self):
         self.log("Initializing ModbusEVSEclient")
+        self.CHARGER_POLLING_ENTITIES = [
+            self.ENTITY_CHARGER_CURRENT_POWER,
+            self.ENTITY_CHARGER_STATE,
+            self.ENTITY_CAR_SOC,
+            self.ENTITY_ERROR_1,
+            self.ENTITY_ERROR_2,
+            self.ENTITY_ERROR_3,
+            self.ENTITY_ERROR_4
+        ]
+
+        self.CHARGER_INFO_ENTITIES = [
+            self.ENTITY_FIRMWARE_VERSION,
+            self.ENTITY_SERIAL_NUMBER_HIGH,
+            self.ENTITY_SERIAL_NUMBER_LOW
+        ]
+
         self.poll_timer_handle = None
 
         self.v2g_main_app = await self.get_app("v2g_liberty")
@@ -180,7 +252,7 @@ class ModbusEVSEclient(hass.Hass):
             retry_on_empty=True,
         )
 
-        # Reacting to chargemode changes is to be done by the V2G Liberty module that calls set_(in)_active
+        # Reacting to charge mode changes is to be done by the V2G Liberty module that calls set_(in)_active
         self.listen_state(self.__handle_charger_state_change, "sensor.charger_charger_state", attribute="all")
 
         self.log("Completed Initializing ModbusEVSEclient")
@@ -191,7 +263,7 @@ class ModbusEVSEclient(hass.Hass):
     ######################################################################
 
     async def stop_charging(self):
-        """Stop charging if it is in process and set chargepower to 0."""
+        """Stop charging if it is in process and set charge power to 0."""
         await self.__set_charger_action("stop", reason="stop called externally")
         await self.__set_charge_power(charge_power = 0)
 
@@ -212,9 +284,9 @@ class ModbusEVSEclient(hass.Hass):
             return
         await self.__set_charger_control("take")
         if charge_power_in_watt == 0:
-            await self.__set_charger_action("stop", reason="start_charge_with_power exterannly called with power = 0")
+            await self.__set_charger_action("stop", reason="start_charge_with_power externally called with power = 0")
         else:
-            await self.__set_charger_action("start", reason="start_charge_with_power exterannly called with power <> 0")
+            await self.__set_charger_action("start", reason="start_charge_with_power externally called with power <> 0")
 
         await self.__set_charge_power(charge_power = charge_power_in_watt)
 
@@ -230,7 +302,7 @@ class ModbusEVSEclient(hass.Hass):
         """To be called when charge_mode in UI is switched to Automatic or Boost"""
         self.log("evse: set_active called")
         await self.__set_charger_control("take")
-        await self.__get_and_process_registers(self.CHARGER_POLLING_REGISTERS)
+        await self.__get_and_process_registers(self.CHARGER_POLLING_ENTITIES)
         await self.__get_car_soc()
         await self.__set_poll_strategy()
 
@@ -267,7 +339,7 @@ class ModbusEVSEclient(hass.Hass):
 
 
     ######################################################################
-    #                   INITIALIZATION RELATED FUNCTIONS                  #
+    #                  INITIALISATION RELATED FUNCTIONS                  #
     ######################################################################
 
 
@@ -280,9 +352,17 @@ class ModbusEVSEclient(hass.Hass):
         if max_charge_power > 0:
             self.v2g_globals.check_max_power_settings(max_charge_power)
 
+
+        # So the status page can show if communication with charge is ok.
+        for entity in self.CHARGER_INFO_ENTITIES:
+            #Reset values
+            entity_name = f"sensor.{entity['ha_entity_name']}"
+            await self.__update_state(entity=entity_name, state="unknown")
+        await self.__get_and_process_registers(self.CHARGER_INFO_ENTITIES)
+
         # We always at least need all the information to get started
         # This also creates the entities in HA that many modules depend upon.
-        await self.__get_and_process_registers(self.CHARGER_POLLING_REGISTERS)
+        await self.__get_and_process_registers(self.CHARGER_POLLING_ENTITIES)
 
         # SoC is essential for many decisions so we need to get it as soon as possible.
         # As at init there most likely is no charging in progress this will be the first 
@@ -320,7 +400,7 @@ class ModbusEVSEclient(hass.Hass):
             await self.__modbus_write(
                 address = self.CHARGER_AUTOSTART_ON_CONNECT_REGISTER, 
                 value = self.AUTOSTART_ON_CONNECT_SETTING['disable'], 
-                source="__set_charger_control, set_autoconnect"
+                source="__set_charger_control, set_auto_connect"
             )
             await self.__modbus_write (
                 address = self.SET_SETPOINT_TYPE_REGISTER, 
@@ -367,6 +447,9 @@ class ModbusEVSEclient(hass.Hass):
         self.log(f"__handle_charger_state_change, new = {new_charger_state}.")
 
         # TODO: Move to v2g-liberty.py?
+        # YES, because:
+        # + It is only for the UI, the functional names are not perse related to a charger (type).
+        # + this is the only place where self.CHARGER_STATES is used!
         # Also make a text version of the state available in the UI
         charger_state_text = self.CHARGER_STATES[new_charger_state]
         if charger_state_text is not None:
@@ -386,7 +469,7 @@ class ModbusEVSEclient(hass.Hass):
         # **** Handle disconnect:
         # Goes to this status when the plug is removed from the socket (not when disconnect is requested from the UI)
         if new_charger_state == self.DISCONNECTED_STATE:
-            #self.log(f"Connectionstate has changed, so check new polling strategy charger_state change new_state: {new_charger_state}, old_state: {old_state}")
+            #self.log(f"Connection state has changed, so check new polling strategy charger_state change new_state: {new_charger_state}, old_state: {old_state}")
             # The connected state has changed to disconnected.
             await self.__set_charger_action("stop", reason="__handle_charge_state_change: disconnected")
             await self.__set_poll_strategy()
@@ -422,7 +505,7 @@ class ModbusEVSEclient(hass.Hass):
             nothing
         """
         if reason != "":
-            reason = f"Reason for action: '{reason}'."
+            reason = f" Reason for action: '{reason}'."
         action_value = ""
         if not await self.is_car_connected():
             self.log(f"Not performing charger action '{action}': No car connected.{reason}")
@@ -462,9 +545,8 @@ class ModbusEVSEclient(hass.Hass):
             self.log("__get_car_soc called, no car connected, returning SoC = 0")
             return 0
 
-        entity_name = f"sensor.{list(self.CAR_SOC_REGISTER.values())[0]}"
+        entity_name = f"sensor.{self.ENTITY_CAR_SOC['ha_entity_name']}"
         state = await self.get_state(entity_name, attribute="all")
-        # self.log(f"__get_car_soc called, SoC state in HA: {state}.")
         should_be_renewed = False
         if state is None or not isinstance(state, dict) or "state" not in state:
             # This can occur if it is queried for the first time and no polling has taken place
@@ -479,12 +561,13 @@ class ModbusEVSEclient(hass.Hass):
             lc = datetime.fromisoformat(state['last_changed'])
             nu = await self.get_now()
             should_be_renewed = (nu - lc).total_seconds() > self.STATE_MAX_AGE_IN_SECONDS
+        self.log(f"__get_car_soc called, SoC state in HA: {state}. Needs to be renewed: {should_be_renewed}.")
 
         if should_be_renewed:
             self.log("__get_car_soc: old or invalid SoC in HA Entity: renew")
-            soc_address = list(self.CAR_SOC_REGISTER.keys())[0]
-            MIN_EXPECTED_SOC_PERCENT = 2 # Should be 1 but pyModbus sometimes returns a wrong reading of 1.
-            MAX_EXPECTED_SOC_PERCENT = 100
+            soc_address = self.ENTITY_CAR_SOC['modbus_address']
+            MIN_EXPECTED_SOC_PERCENT = self.ENTITY_CAR_SOC['minimum_value']
+            MAX_EXPECTED_SOC_PERCENT = self.ENTITY_CAR_SOC['maximum_value']
             if await self.__is_charging_or_discharging():
                 self.log("__get_car_soc: is (dis)charging")
                 soc_in_charger = await self.__force_get_register(
@@ -499,6 +582,7 @@ class ModbusEVSEclient(hass.Hass):
                 # then get an SoC reading and stop charging.
                 # To not send unneeded change events, for the duration of getting an SoC reading, polling is paused.
                 self.try_get_new_soc_in_process = True #Prevent polling to start again from elsewhere.
+                self.log(f"__get_car_soc, try_get_new_soc_in_process set to True")
                 await self.__cancel_polling(reason="try get new soc")
                 # Make sure charging with 1W starts so a SoC can be read.
                 await self.__set_charger_control("take")
@@ -515,6 +599,7 @@ class ModbusEVSEclient(hass.Hass):
                 await self.__set_charger_action("stop", reason="try_get_new_soc")
                 await self.__update_state(entity=entity_name, state=soc_in_charger) # Do before restart polling
                 self.try_get_new_soc_in_process = False
+                self.log(f"__get_car_soc, try_get_new_soc_in_process set to False")
                 await self.__set_poll_strategy()
             state = soc_in_charger
         else:
@@ -537,7 +622,7 @@ class ModbusEVSEclient(hass.Hass):
             nu = await self.get_now()
             should_be_renewed = (nu - lc).total_seconds() > self.STATE_MAX_AGE_IN_SECONDS
         if should_be_renewed:
-            await self.__get_and_process_registers(self.CHARGER_STATE_REGISTER)
+            await self.__get_and_process_registers([self.ENTITY_CHARGER_STATE])
             state = await self.get_state("sensor.charger_charger_state", attribute="all")
 
         state = int(float(state['state']))
@@ -560,7 +645,7 @@ class ModbusEVSEclient(hass.Hass):
 
         if should_be_renewed:
             # Charger_status older than STATUS_MAX_AGE_IN_SECONDS seconds, so refresh:
-            await self.__get_and_process_registers(self.CHARGER_ACTUAL_POWER_REGISTER)
+            await self.__get_and_process_registers([self.ENTITY_CHARGER_CURRENT_POWER])
             state = await self.get_state("sensor.charger_real_charging_power", attribute="all")
 
         state = int(float(state['state']))
@@ -580,33 +665,36 @@ class ModbusEVSEclient(hass.Hass):
         return registers
 
 
-    async def __get_and_process_registers(self, registers:dict):
+    async def __get_and_process_registers(self, entities:list):
         """ This function reads the values from the EVSE via modbus and 
         writes these values to corresponding sensors in HA.
 
         The registers dictionary should have the structure:
-        modbus_address: 'sensorname'
+        modbus_address: 'sensor name'
         Where:
         modbus_address should be int + sorted + increasing and should return int from EVSE
-        sensorname should be str and not contain the prefix 'sensor.'
+        sensor name should be str and not contain the prefix 'sensor.'
         """
-        # self.log(f"read_and_proces_registers called with registers: '{registers}'.")
-        start = list(registers.keys())[0]
-        end = list(registers.keys())[-1]
+        start = entities[0]['modbus_address']
+        end = entities[-1]['modbus_address']
+
         length = end - start + 1
-        results = await self.__modbus_read(address=start, length=length, source="__get_and_proces_registers")
-        for key in registers:
-            entity_name = f"sensor.{registers[key]}"
-            register_index = key - start
+        results = await self.__modbus_read(address=start, length=length, source="__get_and_process_registers")
+        for entity in entities:
+            entity_name = f"sensor.{entity['ha_entity_name']}"
+            register_index = entity['modbus_address'] - start
             new_state = results[register_index]
             if new_state is None:
-                self.log(f"New value 'None' for entity '{entity_name}' ignored.")
+                self.log(f"__get_and_process_registers: New value 'None' for entity '{entity_name}' ignored.")
                 continue
 
             try:
                 new_state = int(float(new_state))
             except:
-                self.log(f"New value '{new_state}' for entity '{entity_name}' ignored.")
+                self.log(f"__get_and_process_registers: New value '{new_state}' for entity '{entity_name}', not type == int : ignored.")
+                continue
+            if not entity['minimum_value'] <= new_state <= entity['maximum_value']:
+                # self.log(f"__get_and_process_registers: New value '{new_state}' for entity '{entity_name}' out of range {entity['minimum_value']} - {entity['maximum_value']} ignored.")
                 continue
 
             # self.log(f"New value '{new_state}' for entity '{entity_name}'.")
@@ -658,7 +746,7 @@ class ModbusEVSEclient(hass.Hass):
         if not skip_min_soc_check and charge_power < 0:
             current_soc = await self.__get_car_soc()
             if current_soc <= c.CAR_MIN_SOC_IN_PERCENT:
-                # Failsafe, this should never happen...
+                # Fail-safe, this should never happen...
                 self.log(f"A discharge is attempted while the current SoC is below the "
                          f"minimum ({c.CAR_MIN_SOC_IN_PERCENT})%. Stopping discharging.")
                 charge_power = 0
@@ -726,7 +814,7 @@ class ModbusEVSEclient(hass.Hass):
 
 
     async def __cancel_polling(self, reason: str = ""):
-        """Stop the polling process by canceling the polling timer.
+        """Stop the polling process by cancelling the polling timer.
            Further reset the polling indicator in the UI.
 
         Args:
@@ -749,8 +837,10 @@ class ModbusEVSEclient(hass.Hass):
             When car is disconnected
             Only poll for charger status to see if car is connected again.
         """
-        await self.__get_and_process_registers(self.CHARGER_STATE_REGISTER)
-        await self.__get_and_process_registers(self.CHARGER_LOCKED_REGISTER)
+        # These needs to be in different lists because the 
+        # modbus addresses in between them do not exist in the EVSE.
+        await self.__get_and_process_registers([self.ENTITY_CHARGER_STATE])
+        await self.__get_and_process_registers([self.ENTITY_CHARGER_LOCKED])
         await self.__update_poll_indicator_in_ui()
 
 
@@ -760,8 +850,10 @@ class ModbusEVSEclient(hass.Hass):
             When car is connected
             Poll for soc, state, power, lock etc..
         """
-        await self.__get_and_process_registers(self.CHARGER_POLLING_REGISTERS)
-        await self.__get_and_process_registers(self.CHARGER_LOCKED_REGISTER)
+        # These needs to be in different lists because the 
+        # modbus addresses in between them do not exist in the EVSE.
+        await self.__get_and_process_registers(self.CHARGER_POLLING_ENTITIES)
+        await self.__get_and_process_registers([self.ENTITY_CHARGER_LOCKED])
         await self.__update_poll_indicator_in_ui()
 
 
@@ -792,6 +884,15 @@ class ModbusEVSEclient(hass.Hass):
         A persistent notification will be set pointing out that the configuration might not be ok.
         Polling is canceled as this is pointless without a connection. 
         """
+        #Try to reset the connection
+        # try to restart the client
+
+        #TODO: Handle only this way at initialisation
+        # Use following code somehow:
+        # if not self.client.connected:
+        #     await self.__handle_no_modbus_connection()
+        #     return False
+
         self.log("__connect_to_modbus_server Could not connect to modbus server, wrong host/port, is it online?")
         self.v2g_globals.create_persistent_notification(
             title="Error in charger configuration",
@@ -818,8 +919,6 @@ class ModbusEVSEclient(hass.Hass):
             bool: If connection was successful
         """
 
-        if self.modbus_connection_in_use:
-            self.log("__connect_to_modbus_server: Waiting for connection to become available again to read/write...")
         # Times in seconds
         STEP = 0.25
         TIMEOUT = 15
@@ -828,27 +927,24 @@ class ModbusEVSEclient(hass.Hass):
             await asyncio.sleep(STEP)
             time_used += STEP
             if time_used >= TIMEOUT:
-                self.log("__connect_to_modbus_server: Timeout on connecting to modbus server.")
+                self.log("__connect_to_modbus_server, timeout: connection with server in use by other process.")
                 return False
         if time_used > 5:
-            # This should be the exception, maybe if getting an SoC 
+            # Only log if time_used is somewhat longer. Can occur while getting an SoC is in progress.
             self.log(f"__connect_to_modbus_sever: {source} waited {time_used} seconds to get a connection.")
         self.modbus_connection_in_use = True
 
         try:
             await self.client.connect()
-            if not self.client.connected:
-                await self.__handle_no_modbus_connection()
-                return False
-        except ModbusException.ConnectionException as ce:
-            self.log(f"__connect_to_modbus_server: Connection error with modbus server {ce}")
+        except ConnectionException as ce:
+            self.log(f"__connect_to_modbus_server: Connection exception while connecting to server '{ce}'.")
+            #TODO: Maybe try close + connect again?
             await self.__handle_no_modbus_connection()
             raise ce
         except ModbusException as exc:
-            self.log(f"__connect_to_modbus_server: General error connecting to Modbus server {exc}")
+            self.log(f"__connect_to_modbus_server: Modbus exception while connecting to server: '{exc}'.")
             raise exc
 
-        # self.log("__connect_to_modbus_server successfully connected!")
         return True
 
 
@@ -892,7 +988,10 @@ class ModbusEVSEclient(hass.Hass):
         MAX_TOTAL_TIME = 120 
         DELAY_BETWEEN_READS = 0.25
 
-        await self.__connect_to_modbus_server(source="__force_get_register")
+        res = await self.__connect_to_modbus_server(source="__force_get_register")
+        if not res:
+            self.log(" __force_get_register: No connection!!!")
+
         # If the real SoC is not available yet, keep trying for max. two minutes
         while True:
             result = None
@@ -900,6 +999,12 @@ class ModbusEVSEclient(hass.Hass):
                 # Only one register is read so count = 1, the charger expects slave to be 1.
                 # I hate using the word 'slave', this should be 'server' but pyModbus has not changed this yet
                 result = await self.client.read_holding_registers(register, count=1, slave=1)
+            except ConnectionException as ce:
+                self.log(f"__force_get_register, no connection: ({exc}). Close and open connection to see it this helps..")
+                #TODO: check if this is n't doing any harm..
+                await self.client.close()
+                await self.client.connect()
+                pass
             except ModbusException as exc:
                 self.log(f"__force_get_register, Received ModbusException({exc}) from library")
                 pass
