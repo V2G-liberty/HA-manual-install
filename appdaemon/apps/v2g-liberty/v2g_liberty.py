@@ -12,7 +12,7 @@ from v2g_globals import V2GLibertyGlobals
 import appdaemon.plugins.hass.hassapi as hass
 
 class V2Gliberty(hass.Hass):
-    """ This class manages the bi-directional charging proces.
+    """ This class manages the bi-directional charging process.
     For this it communicates with:
     + The EVSE client, that communicates with the EV
     + The fm_client, that communicates with the FlexMeasures platform (which delivers the charging schedules).
@@ -53,7 +53,7 @@ class V2Gliberty(hass.Hass):
     # To keep track of duration of charger in error state.
     charger_in_error_since: datetime
     # initially charger_in_error_since is set to this date reference.
-    # If charger_in_error_since is not equal to this date we know timeing has started.
+    # If charger_in_error_since is not equal to this date we know timing has started.
     date_reference: datetime
 
     # For handling no_schedule_errors
@@ -169,6 +169,14 @@ class V2Gliberty(hass.Hass):
         self.no_schedule_errors[error_name] = error_state
         await self.__notify_no_new_schedule()
 
+    async def trigger_set_next_action(self, v2g_args:str = None):
+        """Utility function to externally trigger set_next_action
+
+        Args:
+            v2g_args (str, optional): For debugging. Defaults to None.
+        """
+        msg = f"triggered_externally: {v2g_args}"
+        await self.__set_next_action(v2g_args=msg)
 
     async def notify_user_of_charger_needs_restart(self):
         """Notify admin with critical message of a presumably crashed modbus server 
@@ -192,7 +200,7 @@ class V2Gliberty(hass.Hass):
         # removed and functions are restored if communication is restored.
          
         await self.set_state("input_boolean.charger_modbus_communication_fault", state="on")
-        self.__set_chargemode_in_ui("Stop")
+        self.__set_charge_mode_in_ui("Stop")
         return
 
 
@@ -268,7 +276,7 @@ class V2Gliberty(hass.Hass):
 
         if old_state != 'Stop' and new_state == 'Stop':
             # New mode "Stop" is handled by set_next_action
-            self.log("Stop charging (if in action) and give control based on chargemode = Stop")
+            self.log("Stop charging (if in action) and give control based on charge_mode = Stop")
             # Cancel previous scheduling timers
             await self.__cancel_charging_timers()
             self.in_boost_to_reach_min_soc = False
@@ -339,7 +347,7 @@ class V2Gliberty(hass.Hass):
             # Setting charge_mode set to automatic (was Max boost Now) as car is disconnected.
             charge_mode = await self.get_state("input_select.charge_mode", None)
             if charge_mode == "Max boost now":
-                self.__set_chargemode_in_ui("Automatic")
+                self.__set_charge_mode_in_ui("Automatic")
                 self.__notify_user(
                     message     = "Charge mode set from 'Max charge now' to 'Automatic' as car is disconnected.",
                     title       = None,
@@ -487,7 +495,7 @@ class V2Gliberty(hass.Hass):
             based on self.no_schedule_errors. The administration for the errors is done by
             handle_no_new_schedule().
 
-            When error_state = True of any of the errors:
+            When error_state = True if any of the errors:
                 Set immediately in UI
                 Notify once if remains for an hour
             When error state = False:
@@ -803,7 +811,7 @@ class V2Gliberty(hass.Hass):
 
 
     async def __start_max_charge_now(self):
-        #just to be shure..
+        #just to be sure..
         await self.evse_client.set_active()
         await self.evse_client.start_charge_with_power(kwargs=dict(charge_power=c.CHARGER_MAX_CHARGE_POWER))
 
@@ -876,7 +884,7 @@ class V2Gliberty(hass.Hass):
         if self.evse_client.try_get_new_soc_in_process:
             self.log("__set_next_action: evse_client.try_get_new_soc_in_process, stopped setting next action.")
             return
-        
+
         if self.connected_car_soc == 0:
             self.log("SoC is 0, stopped setting next action.")
             # Maybe (but it is dangerous) do try_get_soc??
@@ -946,7 +954,7 @@ class V2Gliberty(hass.Hass):
                 # Remove "boost schedule" from graph.
                 await self.__set_soc_prognosis_boost_in_ui(None)
             elif self.connected_car_soc <= (c.CAR_MIN_SOC_IN_PERCENT + 1) and await self.evse_client.is_discharging():
-                # Failsafe, this should not happen...
+                # Fail-safe, this should not happen...
                 self.log(f"Stopped discharging as SoC has reached minimum ({c.CAR_MIN_SOC_IN_PERCENT}%).")
                 await self.evse_client.start_charge_with_power(kwargs=dict(charge_power=0))
 
@@ -962,7 +970,7 @@ class V2Gliberty(hass.Hass):
             if self.connected_car_soc >= 100:
                 self.log(f"Reset charge_mode to 'Automatic' because max_charge is reached.")
                 # ToDo: Maybe do this after 20 minutes or so..
-                self.__set_chargemode_in_ui("Automatic")
+                self.__set_charge_mode_in_ui("Automatic")
             else:
                 self.log("Starting max charge now based on charge_mode = Max boost now")
                 await self.__start_max_charge_now()
@@ -976,7 +984,7 @@ class V2Gliberty(hass.Hass):
 
         return
 
-    def __set_chargemode_in_ui(self, setting: str):
+    def __set_charge_mode_in_ui(self, setting: str):
         """ This function sets the charge mode in the UI to setting.
         By setting the UI switch an event will also be fired. So other code will run due to this setting.
 

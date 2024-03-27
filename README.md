@@ -8,7 +8,7 @@ We intend to add optimisation for your solar generation in the near future.
 
 [^1]: For now: most Dutch energy suppliers are listed and all European energy prices (EPEX) are available for optimisation. There also is an option to upload your own prices, if you have an interest in this, please [contact us](https://v2g-liberty.eu/) to see what the options are.
 
-For none European markets (e.g. Australia) there is an option to work with own-prices that can be uploaded to FlexMeasures (we are working on an extention of V2G Liberty so this can be handled within Home Assistant.)
+For none European markets (e.g. Australia) there is an option to work with own-prices that can be uploaded to FlexMeasures (we are working on an extension of V2G Liberty so this can be handled within Home Assistant.)
 
 ![The V2G Liberty Dashboard](https://positive-design.nl/wp-content/uploads/2024/03/V2GL-v0.3.0.png)
 
@@ -44,7 +44,7 @@ Hopefully other chargers will follow soon.
 Before installing or activation of V2G Liberty, please make sure that charging and discharging with the car and charger works properly.
 Test this with the app supplied with the charger.
 This is important because V2G Liberty will 'take control' over the charger.
-Operating the charger either through the screen of the charger or the app will not work (reliably) anymore when V2G Liberty is active.
+Operating the charger either through the screen of the charger or the app will not work (reliably) any more when V2G Liberty is active.
 
 ### FlexMeasures
 
@@ -144,7 +144,7 @@ After installation the reference to these resources has to be added through menu
 
 ### Install Samba share Add-on (optional)
 
-This lets you handle files in HA from a remote computer. This makes copying and editing much easier, so it is highly reccomended to install and use this add-on. This is also an official add-on for HA and thus can be installed from within HA.
+This lets you handle files in HA from a remote computer. This makes copying and editing much easier, so it is highly recommended to install and use this add-on. This is also an official add-on for HA and thus can be installed from within HA.
 
 Again go to `Settings -> Add-ons -> Add-on store` and find and install the Samba share add-on.
 
@@ -152,7 +152,7 @@ When installed the add-on needs to be configured, look for (`Settings -> Addons 
 
 In the documentation tab you'll find instructions on how to connect your computer to the Samba share. You'll have to connect to the `addon_configs` share and to the `config` share.
 
-If this does not work for you the files can also be copied and redited via the add-on "File editor". This is not explained in further detail here.
+If this does not work for you the files can also be copied and edited via the add-on "File editor". This is not explained in further detail here.
 
 ## Configure HA
 
@@ -283,6 +283,30 @@ fm_own_price_consumption_sensor_id: cc
 fm_own_emissions_sensor_id: ee
 fm_own_context_display_name: "Own Prices and Emissions"
 
+# The "own price configuration" is meant to be "on the way to generic" but currently 
+# specifically fits the Amber Electric integration. This integration populates
+# entities XXX and YYY with forecast data
+# This has the following structure:
+# forecasts:
+#   - duration: 30
+#     date: "2024-03-23"
+#     nem_date: "2024-03-23T08:00:00+10:00"
+#     per_kwh: 0.09
+#     spot_per_kwh: 0.09
+#     start_time: "2024-03-22T21:30:01+00:00"
+#     end_time: "2024-03-22T22:00:00+00:00"
+#     renewables: 32
+#     spike_status: none
+#     descriptor: high
+ha_sensor_id_own_consumption_price_forecast: "sensor.XXX"
+ha_sensor_id_own_production_price_forecast: "sensor.YYY"
+collection_name: "forecasts"
+price_label: "per_kwh"
+emission_label: "renewables"
+uom_label: "unit_of_measurement"
+start_label: "start_time"
+end_label: "end_time"
+
 # ****** Pricing data ********
 # Pricing data only needs to be provided if a generic electricity provider is used
 # For transforming the raw price data (from FM) to net price to be shown in UI.
@@ -306,6 +330,7 @@ markup_per_kwh: 14.399
 
 
 ## VERY RARELY CHANGE ##
+fm_base_entity_address: "ea1.2020-07.nl.seita.flexmeasures:fm1."
 fm_base_entity_address_power: "ea1.2022-03.nl.seita.flexmeasures:fm1."
 fm_base_entity_address_availability: "ea1.2022-03.nl.seita.flexmeasures:fm1."
 fm_base_entity_address_soc: "ea1.2022-03.nl.seita.flexmeasures:fm1."
@@ -317,9 +342,9 @@ fm_schedule_duration: "PT27H"
 
 ## ALWAYS CHANGE ##
 # This usually is an IP address but can be a named URL as well.
-wallbox_host: "your charger host here"
+evse_host: "your charger host here"
 # Usually 502
-wallbox_port: 502
+evse_port: 502
 
 ## ALWAYS CHECK / SOME TIMES CHANGE ##
 # Research shows the roundtrip efficient is around 85 % for a typical EV + charger.
@@ -394,8 +419,8 @@ car_average_wh_per_km: 174
 # If there is no load balancer in use, use a lower setting.
 # Usually the discharge power is the same but in some cases the charger or
 # (gird operator) regulations require a different (lower) dis-charge power.
-wallbox_max_charging_power: XXXX
-wallbox_max_discharging_power: XXXX
+evse_max_charging_power: XXXX
+evse_max_discharging_power: XXXX
 
 #############   CALENDAR CONFIGURATION   #######################################
 

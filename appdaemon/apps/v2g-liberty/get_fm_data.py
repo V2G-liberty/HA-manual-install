@@ -33,7 +33,7 @@ class FlexMeasuresDataImporter(hass.Hass):
     # Emissions /kwh in the last 7 days to now. Populated by a call to FM.
     # Used for:
     # + Intermediate storage to fill an entity for displaying the data in the graph
-    # + Calculation of the emmision (savings) in the last 7 days.
+    # + Calculation of the emission (savings) in the last 7 days.
     emission_intensities: dict
 
     def initialize(self):
@@ -72,35 +72,35 @@ class FlexMeasuresDataImporter(hass.Hass):
         # retrieved from its original source (ENTSO-E) but sometimes there is a delay of several hours.
         self.first_try_time_price_data = "14:32:00"
         self.second_try_time_price_data = "18:32:00"
-        self.run_daily(self.daily_kickoff_price_data, self.first_try_time_price_data)
+        self.run_daily(self.daily_kick_off_price_data, self.first_try_time_price_data)
         # At init also run this as (re-) start is not always around self.first_try_time
-        self.daily_kickoff_price_data()
+        self.daily_kick_off_price_data()
 
         self.emission_intensities = {}
         self.first_try_time_emissions_data = "15:16:17"
         self.second_try_time_emissions_data = "19:18:17"
-        self.run_daily(self.daily_kickoff_emissions_data, self.first_try_time_emissions_data)
+        self.run_daily(self.daily_kick_off_emissions_data, self.first_try_time_emissions_data)
         # At init also run this as (re-) start is not always around self.first_try_time
-        self.daily_kickoff_emissions_data()
+        self.daily_kick_off_emissions_data()
 
         self.GET_CHARGING_DATA_AT = "01:15:00"
-        self.run_daily(self.daily_kickoff_charging_data, self.GET_CHARGING_DATA_AT)
+        self.run_daily(self.daily_kick_off_charging_data, self.GET_CHARGING_DATA_AT)
         # At init also run this as (re-) start is not always around self.first_try_time
-        self.daily_kickoff_charging_data()
+        self.daily_kick_off_charging_data()
 
         self.log(
             f"Completed initializing FlexMeasuresDataImporter: check daily at {self.first_try_time_price_data} for new price data with FM.")
 
-    def daily_kickoff_charging_data(self, *args):
+    def daily_kick_off_charging_data(self, *args):
         """ This sets off the daily routine to check for charging cost."""
         self.get_charging_cost()
         self.get_charged_energy()
 
-    def daily_kickoff_price_data(self, *args):
+    def daily_kick_off_price_data(self, *args):
         """ This sets off the daily routine to check for new prices."""
         self.get_epex_prices()
 
-    def daily_kickoff_emissions_data(self, *args):
+    def daily_kick_off_emissions_data(self, *args):
         """ This sets off the daily routine to check for new emission data."""
         self.get_emission_intensities()
 
@@ -209,7 +209,7 @@ class FlexMeasuresDataImporter(hass.Hass):
         total_minutes_charged = 0
         total_minutes_discharged = 0
         charging_energy_points = {}
-        resolution_in_miliseconds = c.FM_EVENT_RESOLUTION_IN_MINUTES * 60 * 1000
+        resolution_in_milliseconds = c.FM_EVENT_RESOLUTION_IN_MINUTES * 60 * 1000
 
         for charge_power in charge_power_points:
             # The API returns both actual and scheduled power, ignore the values from the schedules
@@ -231,7 +231,7 @@ class FlexMeasuresDataImporter(hass.Hass):
                 em = self.emission_intensities.get(key, None)
                 if em is None:
                     # Try a resolution step (5 min.) earlier
-                    key -= resolution_in_miliseconds
+                    key -= resolution_in_milliseconds
                     i += 1
                 else:
                     emission_intensity = em
@@ -241,25 +241,25 @@ class FlexMeasuresDataImporter(hass.Hass):
                 # Strangely we add power to energy... this is practical, we later convert this to energy.
                 total_discharged_energy_last_7_days += power
                 total_minutes_discharged += c.FM_EVENT_RESOLUTION_IN_MINUTES
-                # We strangely add 5 min. periods as if they are hours, we later converty this
+                # We strangely add 5 min. periods as if they are hours, we later convert this
                 total_saved_emissions_last_7_days += power * emission_intensity
             elif power > 0:
                 # Strangely we add power to energy... this is practical, we later convert this to energy.
                 total_charged_energy_last_7_days += power
                 total_minutes_charged += c.FM_EVENT_RESOLUTION_IN_MINUTES
-                # We strangely add 5 min. periods as if they are hours, we later converty this
+                # We strangely add 5 min. periods as if they are hours, we later convert this
                 total_emissions_last_7_days += power * emission_intensity
 
         # Convert the returned average power in MW over event_resolution ( 5 minutes)
         # periods to kWh *1000/12 to energy in kWh
-        conversionfactor = 1000 / (60 / c.FM_EVENT_RESOLUTION_IN_MINUTES)
-        total_discharged_energy_last_7_days = int(round(total_discharged_energy_last_7_days * conversionfactor, 0))
-        total_charged_energy_last_7_days = int(round(total_charged_energy_last_7_days * conversionfactor, 0))
+        conversion_factor = 1000 / (60 / c.FM_EVENT_RESOLUTION_IN_MINUTES)
+        total_discharged_energy_last_7_days = int(round(total_discharged_energy_last_7_days * conversion_factor, 0))
+        total_charged_energy_last_7_days = int(round(total_charged_energy_last_7_days * conversion_factor, 0))
 
         # Convert the returned average MW * kg/MWh over event_resolution (5 minutes) periods to kg (/12)
-        conversionfactor = 1 / (60 / c.FM_EVENT_RESOLUTION_IN_MINUTES)
-        total_saved_emissions_last_7_days = round(total_saved_emissions_last_7_days * conversionfactor, 1)
-        total_emissions_last_7_days = round(total_emissions_last_7_days * conversionfactor, 1)
+        conversion_factor = 1 / (60 / c.FM_EVENT_RESOLUTION_IN_MINUTES)
+        total_saved_emissions_last_7_days = round(total_saved_emissions_last_7_days * conversion_factor, 1)
+        total_emissions_last_7_days = round(total_emissions_last_7_days * conversion_factor, 1)
 
         self.set_value("input_number.total_discharged_energy_last_7_days", total_discharged_energy_last_7_days)
         self.set_value("input_number.total_charged_energy_last_7_days", total_charged_energy_last_7_days)
@@ -362,7 +362,7 @@ class FlexMeasuresDataImporter(hass.Hass):
             if has_negative_prices:
                 self.get_app("v2g_liberty").notify_user(
                     message     = "Consider to check times in the app to optimize electricity usage.",
-                    title       = "Negative electricity prices upcomming",
+                    title       = "Negative electricity prices upcoming",
                     tag         = "negative_energy_prices",
                     critical    = False,
                     send_to_all = True,
@@ -423,11 +423,20 @@ class FlexMeasuresDataImporter(hass.Hass):
             # Set the real value for use in calculations later
             self.emission_intensities[emission['event_start']] = emission_value
             # Adapt value for showing in graph
-            emission_value = int(round(float(emission_value) / 10, 0))
+            emission_value = int(float(emission_value))
             period_start = datetime.fromtimestamp(emission['event_start'] / 1000).isoformat()
-            # ToDO: only make and add data_point if less then 5 hours old this keeps the graph clean.
+            # ToDO: only make and add data_point if less than 5 hours old this keeps the graph clean.
             data_point = {'time': period_start, 'emission': emission_value}
             emission_points.append(data_point)
+
+        if c.ELECTRICITY_PROVIDER != "self_provided":
+            # Prepare for showing in the chart whereby values are mapped to the 0 - 100% SoC axes.
+            # The max value in the list should match 95% to leave an aesthetical margin.
+            # Expected are only positive values.
+            max_emission_value = max(emission_points)
+            # +1 to prevent division by 0 in rare cases.
+            conversion = (max_emission_value + 1) * 100 / 95
+            emission_points[:] = [x / conversion for x in emission_points]
 
         # To make sure HA considers this as new info a datetime is added
         new_state = "Emissions collected at " + now.isoformat()

@@ -9,7 +9,7 @@ import appdaemon.plugins.hass.hassapi as hass
 from v2g_globals import time_round, time_ceil
 
 
-# ToDo:
+# TODO:
 # Start times of Posting data sometimes seem incorrect, it is recommended to research them.
 
 class SetFMdata(hass.Hass):
@@ -41,7 +41,8 @@ class SetFMdata(hass.Hass):
 
     # Variables
     # Access token for FM
-    fm_token: str
+    # TODO: use fm_client instead.
+    fm_token: str = ""
 
     # Data for separate is sent in separate calls.
     # As a call might fail we keep track of when the data (times-) series has started
@@ -122,6 +123,8 @@ class SetFMdata(hass.Hass):
         # end of the initial period conclusion
         self.RESOLUTION_TIMEDELTA = timedelta(minutes=c.FM_EVENT_RESOLUTION_IN_MINUTES)
 
+        self.authenticate_with_fm()
+
         runtime = time_ceil(local_now, self.RESOLUTION_TIMEDELTA)
         self.hourly_power_readings_since = runtime
         self.hourly_availability_readings_since = runtime
@@ -171,8 +174,8 @@ class SetFMdata(hass.Hass):
 
     def record_availability(self, conclude_interval=False):
         """ Record (non_)availability durations of time in current interval.
-            Called at chargemode_change and charger_status_change
-            Use conclude_interval argument to conclude an interval (without changing the availablity)
+            Called at charge_mode_change and charger_status_change
+            Use conclude_interval argument to conclude an interval (without changing the availability)
         """
         if self.current_availability != self.is_available() or conclude_interval:
             local_now = self.get_now()
@@ -200,9 +203,9 @@ class SetFMdata(hass.Hass):
             # Ignore a state change to 'unavailable'
             return
         power = int(float(power))
-        self.proces_power_change(power)
+        self.process_power_change(power)
 
-    def proces_power_change(self, power):
+    def process_power_change(self, power):
         """Keep track of updated power changes within a regular interval."""
         local_now = self.get_now()
         duration = int((local_now - self.current_power_since).total_seconds())
@@ -215,7 +218,7 @@ class SetFMdata(hass.Hass):
         """ Conclude a regular interval.
             Called every c.FM_EVENT_RESOLUTION_IN_MINUTES minutes (usually 5 minutes)
         """
-        self.proces_power_change(self.current_power)
+        self.process_power_change(self.current_power)
         self.record_availability(True)
 
         # At initialise there might be an incomplete period,
@@ -305,6 +308,8 @@ class SetFMdata(hass.Hass):
             self.log("List of soc readings is 0 length..")
             return False
 
+        # TODO: Use generic post_data function
+
         duration = len(self.soc_readings) * c.FM_EVENT_RESOLUTION_IN_MINUTES
         hours = math.floor(duration / 60)
         minutes = duration - hours * 60
@@ -340,6 +345,8 @@ class SetFMdata(hass.Hass):
             self.log("List of availability readings is 0 length..")
             return False
 
+        # TODO: Use generic post_data function
+
         duration = len(self.availability_readings) * c.FM_EVENT_RESOLUTION_IN_MINUTES
         hours = math.floor(duration / 60)
         minutes = duration - hours * 60
@@ -368,6 +375,7 @@ class SetFMdata(hass.Hass):
         """ Try to Post power readings to FM.
 
         Return false if un-successful """
+        # TODO: Use generic post_data function
 
         # If self.power_readings is empty there is nothing to send.
         if len(self.power_readings) == 0:
@@ -398,6 +406,54 @@ class SetFMdata(hass.Hass):
             return False
         return True
 
+
+
+    def post_data(self, fm_sensor_id: str, values:list, start: datetime, duration: str, uom: str) -> bool:
+        """General function to post data to FM.
+
+        Args:
+            fm_sensor_id (str): FM entity address
+            values (list): list of values to send
+            start (datetime): start date-time of first value
+            duration (str): duration for which the values are relevant in format PT12H35M
+            uom (str): unit of measure, eg MW, EUR/kWh, etc.
+
+        Returns:
+            bool: wether or not sending was successful
+        """
+
+        # If self.power_readings is empty there is nothing to send.
+        if len(values) == 0:
+            self.log(f"Value list 0 length, not sending data to {fm_sensor_id}.")
+            return False
+
+        message = {
+            "type": "PostSensorDataRequest",
+            "sensor": fm_sensor_id,
+            "values": values,
+            "start": start.isoformat(),
+            "duration": duration,
+            "unit": uom
+        }
+        self.log(f"post_data, message: '{message}'.")
+        # XXXXXXXXX
+        # TODO: REMOVE
+        # if message:
+        #     return True
+        
+        # TODO: use  flexmeasures-client instead
+        res = requests.post(
+            c.FM_SET_DATA_URL,
+            json=message,
+            headers={"Authorization": self.fm_token},
+        )
+        if res.status_code != 200:
+            self.log_failed_response(res, "PostSensorData for Power")
+            return False
+        return True
+
+
+
     def is_available(self):
         """ Check if car and charger are available for automatic charging. """
         # TODO:
@@ -418,6 +474,7 @@ class SetFMdata(hass.Hass):
         """Authenticate with the FlexMeasures server and store the returned auth token.
         Hint: the lifetime of the token is limited, so also call this method whenever the server returns a 401 status code.
         """
+        # TODO: Use flexmeasures-client instead.
         self.log(f"Authenticating with FlexMeasures on URL '{c.FM_AUTHENTICATION_URL}'.")
         res = requests.post(
             c.FM_AUTHENTICATION_URL,
