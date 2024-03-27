@@ -999,7 +999,7 @@ class ModbusEVSEclient(hass.Hass):
                 # I hate using the word 'slave', this should be 'server' but pyModbus has not changed this yet
                 result = await self.client.read_holding_registers(register, count=1, slave=1)
             except ConnectionException as ce:
-                self.log(f"__force_get_register, no connection: ({exc}). Close and open connection to see it this helps..")
+                self.log(f"__force_get_register, no connection: ({ce}). Close and open connection to see it this helps..")
                 #TODO: check if this is n't doing any harm..
                 await self.client.close()
                 await self.client.connect()

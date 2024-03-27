@@ -425,17 +425,17 @@ class FlexMeasuresDataImporter(hass.Hass):
             # Adapt value for showing in graph
             emission_value = int(float(emission_value))
             period_start = datetime.fromtimestamp(emission['event_start'] / 1000).isoformat()
-            # ToDO: only make and add data_point if less then 5 hours old this keeps the graph clean.
+            # ToDO: only make and add data_point if less than 5 hours old this keeps the graph clean.
             data_point = {'time': period_start, 'emission': emission_value}
             emission_points.append(data_point)
 
         if c.ELECTRICITY_PROVIDER != "self_provided":
             # Prepare for showing in the chart whereby values are mapped to the 0 - 100% SoC axes.
-            # The max value in the list should match 95%. Expected are only positive values.
-            # TODO: Improve
-            max = max(emission_points)
+            # The max value in the list should match 95% to leave an aesthetical margin.
+            # Expected are only positive values.
+            max_emission_value = max(emission_points)
             # +1 to prevent division by 0 in rare cases.
-            conversion = (max + 1) * 100/95
+            conversion = (max_emission_value + 1) * 100 / 95
             emission_points[:] = [x / conversion for x in emission_points]
 
         # To make sure HA considers this as new info a datetime is added

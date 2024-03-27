@@ -11,28 +11,46 @@ from v2g_globals import time_round, convert_to_duration_string
 
 class ManageOwnPriceData(hass.Hass):
     """
-    App reads data from the entities that the integration of the power-company
-    writes.
+    App reads data from the entities that the integration of the power-company populates.
+
     It is expected that there are:
     Forecast entities for consumption- and production prices per kWh for fixed intervals in
-    a longer period ahead (e.g 12 or 24 hrs). These also include an indication of the
-    emissions/kWh.
-    There are entities for a fixed consumption- and production price for the next interval.
+    a longer period ahead (e.g. 12 or 24 hrs). These also include an indication of the
+    % renewables:
+    The data is expected to have the following structure:
+    forecasts:
+      - per_kwh: 0.09
+        renewables: 32
+        start_time: "2024-03-22T21:30:01+00:00"
+        end_time: "2024-03-22T22:00:00+00:00"
     """
 
     FM_ENTITY_PRICE_PRODUCTION: str
     FM_ENTITY_PRICE_CONSUMPTION: str
     FM_ENTITY_EMISSIONS: str
 
+    # The sensor (or entity) id's to which the third party integration
+    # writes the Consumption- and Production Price (Forecasts)
     HA_CPF_SENSOR_ID: str
     HA_PPF_SENSOR_ID: str
-    HA_CPX_SENSOR_ID: str
-    HA_PPX_SENSOR_ID: str
 
+    # The data in foregoing constants has the following structure:
+    # forecasts:
+    #   - duration: 30
+    #     date: "2024-03-23"
+    #     nem_date: "2024-03-23T08:00:00+10:00"
+    #     per_kwh: 0.09
+    #     spot_per_kwh: 0.09
+    #     start_time: "2024-03-22T21:30:01+00:00"
+    #     end_time: "2024-03-22T22:00:00+00:00"
+    #     renewables: 32
+    #     spike_status: none
+    #     descriptor: high
+    # To extract the right data the following constants are used.
     COLLECTION_NAME: str
     PRICE_LABEL: str
     EMISSION_LABEL: str
-    UOM_LABEL: str
+    UOM_LABEL: str  # currently un-used because Amber does not use the TLA but the general
     START_LABEL: str
     END_LABEL: str
 
@@ -75,7 +93,7 @@ class ManageOwnPriceData(hass.Hass):
         self.COLLECTION_NAME = self.args["collection_name"]
         self.PRICE_LABEL = self.args["price_label"]
         self.EMISSION_LABEL = self.args["emission_label"]
-        self.UOM_LABEL = self.args["uom_label"] #currently un-used because Amber does not use the TLA but the general $
+        #self.UOM_LABEL = self.args["uom_label"]
         self.START_LABEL = self.args["start_label"]
         self.END_LABEL = self.args["end_label"]
         
@@ -121,8 +139,8 @@ class ManageOwnPriceData(hass.Hass):
         for item in collection_cpf:
             consumption_prices.append(round(float(item[self.PRICE_LABEL]) * self.KWH_MWH_FACTOR, 2))
             # Emissions are same for consumption- and production prices so only done here.
-            # Amber has % renewables
-            # we emissions % = 100 - renewables %.
+            # Amber has % renewables, FlexMeasures uses % emissions as it runs a cost minimisation.
+            # So, emissions % = 100 - renewables %.
             emissions.append(100 - int(float(item[self.EMISSION_LABEL])))
 
         if consumption_prices != self.last_consumption_prices:
@@ -142,14 +160,15 @@ class ManageOwnPriceData(hass.Hass):
             )
             if res and c.OPTIMISATION_MODE == "price":
                 new_schedule_needed = True
-            self.log(f"__check_for_price_changes, res: {res}, opt_mod: {c.OPTIMISATION_MODE}, new_schedule: {new_schedule_needed}")
+            self.log(f"__check_for_price_changes, res: {res}, "
+                     f"opt_mod: {c.OPTIMISATION_MODE}, new_schedule: {new_schedule_needed}")
  
         if emissions != self.last_emissions:
             self.log("__check_for_price_changes: emissions changed")
             # TODO: copied code from previous block, please prevent this.
             start_cpf = self.parse_to_rounded_local_datetime(collection_cpf[0][self.START_LABEL])
             end_cpf = self.parse_to_rounded_local_datetime(collection_cpf[-1][self.END_LABEL])
-            duration_cpf = int(float(((end_cpf - start_cpf).total_seconds()/60))) #convert sec. to min.
+            duration_cpf = int(float(((end_cpf - start_cpf).total_seconds()/60)))  # convert sec. to min.
             duration_cpf = convert_to_duration_string(duration_cpf)
             self.last_emissions = list(emissions)
             uom = "%"
@@ -162,7 +181,8 @@ class ManageOwnPriceData(hass.Hass):
             )
             if res and c.OPTIMISATION_MODE != "price":
                 new_schedule_needed = True
-            self.log(f"__check_for_price_changes, res: {res}, opt_mod: {c.OPTIMISATION_MODE}, new_schedule: {new_schedule_needed}")
+            self.log(f"__check_for_price_changes, res: {res}, "
+                     f"opt_mod: {c.OPTIMISATION_MODE}, new_schedule: {new_schedule_needed}")
 
         #### Production prices ####
         production_prices = []

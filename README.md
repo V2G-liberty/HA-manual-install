@@ -283,7 +283,7 @@ fm_own_price_consumption_sensor_id: cc
 fm_own_emissions_sensor_id: ee
 fm_own_context_display_name: "Own Prices and Emissions"
 
-# The "own price configuration" is mend to be "on the way to generic" but currently 
+# The "own price configuration" is meant to be "on the way to generic" but currently 
 # specifically fits the Amber Electric integration. This integration populates
 # entities XXX and YYY with forecast data
 # This has the following structure:
