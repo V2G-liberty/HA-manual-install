@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import math
 import time
 
 import appdaemon.plugins.hass.hassapi as hass
@@ -15,7 +16,7 @@ class V2GLibertyGlobals(hass.Hass):
             "charger_plus_car_roundtrip_efficiency", 50, 100) / 100
         self.log(f"v2g_globals roundtrip-efficiency: {c.CHARGER_PLUS_CAR_ROUNDTRIP_EFFICIENCY}.")
 
-        # The MAX_(DIS)CHARGE_POWER constants migth be changed if the setting in the charge is lower 
+        # The MAX_(DIS)CHARGE_POWER constants might be changed if the setting in the charge is lower 
         c.CHARGER_MAX_CHARGE_POWER = self.read_and_process_int_setting("charger_max_charging_power", 1380, 22000)
         self.log(f"v2g_globals max charge power: {c.CHARGER_MAX_CHARGE_POWER} Watt.")
         c.CHARGER_MAX_DISCHARGE_POWER = self.read_and_process_int_setting("charger_max_discharging_power", 1380, 22000)
@@ -50,8 +51,9 @@ class V2GLibertyGlobals(hass.Hass):
         self.log(f"v2g_globals ELECTRICITY_PROVIDER: {c.ELECTRICITY_PROVIDER}.")
 
         # The utility provides the electricity, if the price and emissions data is provided to FM
-        # by V2G Liberty this is labeled as "self_provided".
+        # by V2G Liberty this is labelled as "self_provided".
         if c.ELECTRICITY_PROVIDER == "self_provided":
+            # These are used for optimisation context and posting data
             c.FM_PRICE_PRODUCTION_SENSOR_ID = int(float(self.args["fm_own_price_production_sensor_id"]))
             c.FM_PRICE_CONSUMPTION_SENSOR_ID = int(float(self.args["fm_own_price_consumption_sensor_id"]))
             c.FM_EMISSIONS_SENSOR_ID = int(float(self.args["fm_own_emissions_sensor_id"]))
@@ -61,7 +63,7 @@ class V2GLibertyGlobals(hass.Hass):
                 c.ELECTRICITY_PROVIDER,
                 c.DEFAULT_UTILITY_CONTEXTS["nl_generic"],
             )
-            # ToDo: Notify user if fallback "nl_generic" is used..
+            # TODO: Notify user if fallback "nl_generic" is used..
             c.FM_PRICE_PRODUCTION_SENSOR_ID = context["production-sensor"]
             c.FM_PRICE_CONSUMPTION_SENSOR_ID = context["consumption-sensor"]
             c.FM_EMISSIONS_SENSOR_ID = context["emissions-sensor"]
@@ -85,13 +87,13 @@ class V2GLibertyGlobals(hass.Hass):
         if not all_ok:
             message = f"The setting MAX_(DIS)CHARGE_POWER is lowered to stay within charger setting: '{max_charge_power}'."
             self.log(message)
-            self.create_persistant_notification(
+            self.create_persistent_notification(
                 title="Automatic configuration change",
                 message=message,
                 id="config_change_max_charge_power"
             )
 
-    def create_persistant_notification(self, message:str, title:str, id:str):
+    def create_persistent_notification(self, message:str, title:str, id:str):
         self.call_service(
             'persistent_notification/create',
             title=title,
@@ -108,7 +110,7 @@ class V2GLibertyGlobals(hass.Hass):
             message = f"Error, the setting '{setting_name}' is not found in configuration files. V2G Liberty might not function correctly."
             self.log(message)
             id = "config_error_" + setting_name
-            self.create_persistant_notification(
+            self.create_persistent_notification(
                 title="Error in configuration",
                 message=message,
                 id=id
@@ -122,7 +124,7 @@ class V2GLibertyGlobals(hass.Hass):
             self.log(message)
             id = "config_change_" + setting_name
             reading = tmp
-            self.create_persistant_notification(
+            self.create_persistent_notification(
                 title="Automatic configuration change",
                 message=message,
                 notification_id=id
@@ -151,3 +153,15 @@ def time_ceil(time, delta, epoch=None):
     if mod:
         return time + (delta - mod)
     return time
+
+def convert_to_duration_string(duration_in_minutes: int) -> str:
+    """
+    Args:
+        duration_in_minutes (int): duration in minutes to convert
+
+    Returns:
+        str: a duration string eg. PT9H35M
+    """
+    hours = math.floor(duration_in_minutes / 60)
+    minutes = duration_in_minutes - hours * 60
+    return "PT" + str(hours) + "H" + str(minutes) + "M"

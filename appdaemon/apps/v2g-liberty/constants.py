@@ -1,7 +1,8 @@
 ### V2G Liberty constants ###
-
-# Date 2024-03-26 Initial version
-V2G_LIBERTY_VERSION = "0.3.1"
+# From version 0.3.0 this software has been moved form github.com/seitabv/v2g-liberty
+# to https://github.com/V2G-liberty/HA-manual-install and so pull-request numbers have been reset.
+# Date 2024-03-26 Pull request 3
+V2G_LIBERTY_VERSION = "0.3.2"
 
 # USER PREFERENCE
 # See remark for charger constants

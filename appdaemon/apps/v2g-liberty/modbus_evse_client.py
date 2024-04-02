@@ -38,50 +38,50 @@ class ModbusEVSEclient(hass.Hass):
         'ha_entity_name': 'charger_real_charging_power'
     }
     ENTITY_CHARGER_STATE = {
-        'modbus_address' : 537,
+        'modbus_address': 537,
         'minimum_value': 0,
         'maximum_value': 11,
         'ha_entity_name': 'charger_charger_state'
     }
     ENTITY_CAR_SOC = {
-        'modbus_address' : 538,
+        'modbus_address': 538,
         'minimum_value': 2,
         'maximum_value': 100,
         'ha_entity_name': 'charger_connected_car_state_of_charge'
     } #0% is very unlikely, 1% is sometimes returned while the true value is (much) higher
     ENTITY_ERROR_1 = {
-        'modbus_address' : 539,
+        'modbus_address': 539,
         'minimum_value': 0,
         'maximum_value': 65535,
         'ha_entity_name': 'unrecoverable_errors_register_high'
     }
     ENTITY_ERROR_1 = {
-        'modbus_address' : 539,
+        'modbus_address': 539,
         'minimum_value': 0,
         'maximum_value': 65535,
         'ha_entity_name': 'unrecoverable_errors_register_high'
     }
     ENTITY_ERROR_2 = {
-        'modbus_address' : 540,
+        'modbus_address': 540,
         'minimum_value': 0,
         'maximum_value': 65535,
         'ha_entity_name': 'unrecoverable_errors_register_low'
     }
     ENTITY_ERROR_3 = {
-        'modbus_address' : 541,
+        'modbus_address': 541,
         'minimum_value': 0,
         'maximum_value': 65535,
         'ha_entity_name': 'recoverable_errors_register_high'
     }
     ENTITY_ERROR_4 = {
-        'modbus_address' : 542,
+        'modbus_address': 542,
         'minimum_value': 0,
         'maximum_value': 65535,
         'ha_entity_name': 'recoverable_errors_register_low'
     }
 
     ENTITY_CHARGER_LOCKED = {
-        'modbus_address' : 256,
+        'modbus_address': 256,
         'minimum_value': 0,
         'maximum_value': 1,
         'ha_entity_name': 'charger_locked'
@@ -91,21 +91,21 @@ class ModbusEVSEclient(hass.Hass):
     CHARGER_INFO_ENTITIES: list
 
     ENTITY_FIRMWARE_VERSION = {
-        'modbus_address' : 1,
+        'modbus_address': 1,
         'minimum_value': 0,
         'maximum_value': 65535,
         'ha_entity_name': 'firmware_version'
     }
 
     ENTITY_SERIAL_NUMBER_HIGH = {
-        'modbus_address' : 2,
+        'modbus_address': 2,
         'minimum_value': 0,
         'maximum_value': 65535,
         'ha_entity_name': 'serial_number_high'
     }
 
     ENTITY_SERIAL_NUMBER_LOW = {
-        'modbus_address' : 3,
+        'modbus_address': 3,
         'minimum_value': 0,
         'maximum_value': 65535,
         'ha_entity_name': 'serial_number_low'
@@ -206,7 +206,7 @@ class ModbusEVSEclient(hass.Hass):
     # Handle for polling_timer, needed for cancelling polling.
     poll_timer_handle: object
     BASE_POLLING_INTERVAL_SECONDS: int = 5
-    MINIMAL_POLLING_INTERVAL_SECONDS:int = 15
+    MINIMAL_POLLING_INTERVAL_SECONDS: int = 15
     # For indication to the user if/how fast polling is in progress
     poll_update_text: str = ""
 
@@ -239,8 +239,8 @@ class ModbusEVSEclient(hass.Hass):
         self.v2g_main_app = await self.get_app("v2g_liberty")
         self.v2g_globals = await self.get_app("v2g-globals")
 
-        host = self.args["wallbox_host"]
-        port = self.args["wallbox_port"]
+        host = self.args["evse_host"]
+        port = self.args["evse_port"]
         self.log(f"Configuring Modbus EVSE client at {host}:{port}")
         self.client = modbusClient.AsyncModbusTcpClient(
             host=host,
@@ -469,7 +469,6 @@ class ModbusEVSEclient(hass.Hass):
         # **** Handle disconnect:
         # Goes to this status when the plug is removed from the socket (not when disconnect is requested from the UI)
         if new_charger_state == self.DISCONNECTED_STATE:
-            #self.log(f"Connection state has changed, so check new polling strategy charger_state change new_state: {new_charger_state}, old_state: {old_state}")
             # The connected state has changed to disconnected.
             await self.__set_charger_action("stop", reason="__handle_charge_state_change: disconnected")
             await self.__set_poll_strategy()

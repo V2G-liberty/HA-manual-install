@@ -22,7 +22,7 @@ class FlexMeasuresClient(hass.Hass):
 
     # Constants
     FM_URL: str
-    FM_TIGGER_URL: str
+    FM_TRIGGER_URL: str
     FM_OPTIMISATION_CONTEXT: dict
     FM_SCHEDULE_DURATION: str
     FM_USER_EMAIL: str
@@ -65,7 +65,7 @@ class FlexMeasuresClient(hass.Hass):
 
         base_url = c.FM_SCHEDULE_URL + str(c.FM_ACCOUNT_POWER_SENSOR_ID)
         self.FM_URL = base_url + c.FM_SCHEDULE_SLUG
-        self.FM_TIGGER_URL = base_url + c.FM_SCHEDULE_TRIGGER_SLUG
+        self.FM_TRIGGER_URL = base_url + c.FM_SCHEDULE_TRIGGER_SLUG
         self.FM_SCHEDULE_DURATION = self.args["fm_schedule_duration"]
         self.FM_USER_EMAIL = self.args["fm_user_email"]
         self.FM_USER_PASSWORD = self.args["fm_user_password"]
@@ -103,7 +103,7 @@ class FlexMeasuresClient(hass.Hass):
         if res.status_code == 200:
             if self.connection_error_counter > 0:
                 # There was an error before as the counter > 0
-                # So a timer must be running, but it is not needed anymore, so cancel it.
+                # So a timer must be running, but it is not needed any more, so cancel it.
                 self.cancel_timer(self.handle_for_repeater)
                 await self.v2g_main_app.handle_no_new_schedule("no_communication_with_fm", False)
             self.connection_error_counter = 0
@@ -200,7 +200,6 @@ class FlexMeasuresClient(hass.Hass):
             current_soc_kwh=current_soc_kwh,
             back_to_max_soc=back_to_max_soc
         )
-        # self.log(f"XYZXYZ id={schedule_id}")
         if schedule_id is None:
             self.log("Failed to trigger new schedule, schedule ID is None. Cannot call get_schedule")
             self.fm_busy_getting_schedule = False
@@ -284,7 +283,7 @@ class FlexMeasuresClient(hass.Hass):
         target_datetime = fnc_kwargs["target_datetime"]
         back_to_max_soc = fnc_kwargs["back_to_max_soc"]
         self.log(f"trigger_schedule called with current_soc_kwh: {current_soc_kwh} kWh.")
-        url = self.FM_TIGGER_URL
+        url = self.FM_TRIGGER_URL
 
 
         resolution = timedelta(minutes=c.FM_EVENT_RESOLUTION_IN_MINUTES)
@@ -332,7 +331,7 @@ class FlexMeasuresClient(hass.Hass):
         # 3. SRW < NOW < B2MS < CTM and SRW < NOW < CTM < B2MS
         #    Here the priority is to reach the CTM and so not soc-maxima.
         #
-        # Note that the situation where CTM < NOW is not relevant anymore and is covered by scenario 1.
+        # Note that the situation where CTM < NOW is not relevant any more and is covered by scenario 1.
 
         now = datetime.now(tz=self.TZ)
         rounded_now = time_round(now, resolution)
