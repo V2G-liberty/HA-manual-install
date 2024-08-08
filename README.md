@@ -1,4 +1,5 @@
-# V2G Liberty: optimised vehicle-to-grid charging of your EV
+# DEPRECATED
+Please see [HA add-on V2G Liberty](https://github.com/V2G-liberty/addon-v2g-liberty). 
 
 This integration lets you add full automatic and price optimized control over Vehicle to grid (V2G) charging. It has a 
 practical local app in [HomeAssistant](https://www.home-assistant.io/) and uses the smart EMS [FlexMeasures](https://flexmeasures.io) for optimized schedules.
@@ -9,10 +10,6 @@ We intend to add optimisation for your solar generation in the near future.
 [^1]: For now: most Dutch energy suppliers are listed and all European energy prices (EPEX) are available for optimisation. There also is an option to upload your own prices, if you have an interest in this, please [contact us](https://v2g-liberty.eu/) to see what the options are.
 
 For none European markets (e.g. Australia) there is an option to work with own-prices that can be uploaded to FlexMeasures (we are working on an extension of V2G Liberty so this can be handled within Home Assistant.)
-
-![The V2G Liberty Dashboard](https://positive-design.nl/wp-content/uploads/2024/03/V2GL-v0.3.0.png)
-
-
 
 You can read more about the project and its vision [here](https://v2g-liberty.eu/) and [here](https://seita.nl/project/v2ghome-living-lab/).
 
