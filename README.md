@@ -1,5 +1,8 @@
 # DEPRECATED
-Please see [HA add-on V2G Liberty](https://github.com/V2G-liberty/addon-v2g-liberty). 
+This repository is no longer supported.  It has been replaced by [HA add-on V2G Liberty](https://github.com/V2G-liberty/addon-v2g-liberty). 
+
+
+## V2G Liberty manual install
 
 This integration lets you add full automatic and price optimized control over Vehicle to grid (V2G) charging. It has a 
 practical local app in [HomeAssistant](https://www.home-assistant.io/) and uses the smart EMS [FlexMeasures](https://flexmeasures.io) for optimized schedules.
